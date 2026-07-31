@@ -1,0 +1,245 @@
+@startuml SIR_Cusco_Classes
+!theme plain
+skinparam classBackgroundColor #FEFEFE
+skinparam classBorderColor #333333
+skinparam classArrowColor #333333
+skinparam backgroundColor #FFFFFF
+
+package "Autenticación" {
+  class Usuario {
+    - id: int
+    - name: str
+    - email: str
+    - password: str
+    - role: Rol
+    - zone: Zona
+    - created_at: datetime
+    - is_active: bool
+    --
+    + login(email, password): bool
+    + logout(): void
+    + reset_password(email): str
+    + update_profile(data): bool
+  }
+
+  class Rol {
+    - id: int
+    - name: str (CIUDADANO|OPERADOR|ADMIN|CONDUCTOR)
+    - permissions: List<str>
+    - description: str
+    --
+    + has_permission(action): bool
+    + get_accessible_features(): List<Feature>
+  }
+}
+
+package "Dominio de Negocio" {
+  class Zona {
+    - id: int
+    - name: str
+    - latitude: float
+    - longitude: float
+    - criticality: str
+    - population: int
+    --
+    + get_schedules(): List<Horario>
+    + get_trucks(): List<Camion>
+    + is_within_bounds(lat, lng): bool
+    + calculate_distance(lat, lng): float
+  }
+
+  class Horario {
+    - id: int
+    - zone: Zona
+    - day: str
+    - time: str
+    - waste_types: List<str>
+    - frequency: str
+    --
+    + get_next_collection(): datetime
+    + is_collection_day(date): bool
+    + get_time_until_collection(): str
+  }
+
+  class Residuo {
+    - id: int
+    - type: str (ORGANICO|RECICLABLE|NO_RECICLABLE)
+    - examples: List<str>
+    - handling: str
+    - color_code: str
+    - destination: str
+    --
+    + classify_item(item): str
+    + get_instructions(): str
+    + get_destination(): str
+  }
+}
+
+package "Operaciones" {
+  class Camion {
+    - id: int
+    - code: str
+    - driver: Usuario
+    - status: str
+    - zone: Zona
+    - capacity_kg: int
+    - current_load_kg: int
+    - latitude: float
+    - longitude: float
+    - last_update: datetime
+    --
+    + get_location(): Tuple<float, float>
+    + update_location(lat, lng): void
+    + get_load_percentage(): float
+    + is_full(): bool
+    + get_current_route(): Ruta
+  }
+
+  class Ruta {
+    - id: int
+    - truck: Camion
+    - zone: Zona
+    - stops: List<Parada>
+    - progress: int
+    - eta: str
+    - delay: str
+    - start_time: datetime
+    - estimated_end: datetime
+    --
+    + calculate_eta(): str
+    + update_progress(percentage): void
+    + detect_delays(): List<str>
+    + get_next_stop(): Parada
+    + calculate_distance_remaining(): float
+  }
+
+  class Parada {
+    - id: int
+    - route: Ruta
+    - address: str
+    - latitude: float
+    - longitude: float
+    - sequence: int
+    - estimated_time: datetime
+    --
+    + mark_completed(): void
+    + get_distance_from(lat, lng): float
+  }
+
+  class Alerta {
+    - id: int
+    - type: str
+    - zone: Zona
+    - priority: str
+    - message: str
+    - status: str
+    - created_at: datetime
+    - resolved_at: datetime
+    - assigned_to: Usuario
+    --
+    + resolve(user): void
+    + escalate(priority): void
+    + notify_users(): void
+    + get_time_open(): str
+  }
+
+  class Reporte {
+    - id: int
+    - citizen: Usuario
+    - zone: Zona
+    - type: str
+    - detail: str
+    - status: str
+    - created_at: datetime
+    - resolved_at: datetime
+    - assigned_to: Usuario
+    --
+    + update_status(new_status): void
+    + assign_to(user): void
+    + get_resolution_time(): str
+    + get_timeline(): List<Event>
+  }
+
+  class Recoleccion {
+    - id: int
+    - truck: Camion
+    - zone: Zona
+    - kg_collected: int
+    - status: str
+    - date: date
+    - time_start: datetime
+    - time_end: datetime
+    - residues: List<Residuo>
+    --
+    + confirm_collection(): void
+    + get_duration(): str
+    + calculate_efficiency(): float
+  }
+
+  class Estadisticas {
+    - id: int
+    - period: str
+    - zones_count: int
+    - trucks_active: int
+    - reports_open: int
+    - collections_confirmed: int
+    - total_kg: int
+    - compliance: float
+    - generated_at: datetime
+    --
+    + calculate_kpi(): Dict<str, float>
+    + get_trend(period): Dict
+    + export_report(): bytes
+  }
+}
+
+'Relaciones
+Usuario --> Rol : tiene
+Usuario --> Zona : asignado a
+Usuario "1" --> "*" Reporte : crea
+Usuario "1" --> "*" Alerta : asignado a
+Usuario "1" --> "*" Camion : conduce
+
+Zona "1" --> "*" Horario : tiene
+Zona "1" --> "*" Camion : tiene
+Zona "1" --> "*" Alerta : afecta a
+Zona "1" --> "*" Reporte : contiene
+Zona "1" --> "*" Recoleccion : contiene
+Zona "1" --> "*" Ruta : contiene
+
+Horario "*" --> "1" Residuo : incluye
+
+Camion "1" --> "*" Ruta : ejecuta
+Camion "1" --> "*" Recoleccion : realiza
+
+Ruta "1" --> "*" Parada : tiene
+
+Alerta --> Zona
+Alerta --> Usuario
+
+Reporte --> Usuario : reporta
+Reporte --> Zona
+Reporte --> Usuario : asignado a
+
+Recoleccion --> Camion
+Recoleccion --> Zona
+Recoleccion "*" --> "*" Residuo
+
+note right of Usuario
+  Clase base para
+  todos los usuarios
+  del sistema
+end note
+
+note right of Alerta
+  Incidencias del
+  sistema que requieren
+  atención operativa
+end note
+
+note right of Recoleccion
+  Registro de
+  operaciones completadas
+end note
+
+@enduml

@@ -1,0 +1,14 @@
+# Ignorar backend (se despliega en Railway, no en Vercel)
+backend-python/
+backend-typescript/
+database/
+scripts/
+docs/
+.venv/
+*.py
+*.sql
+render.yaml
+railway.toml
+Dockerfile
+nixpacks.toml
+verify_system.py

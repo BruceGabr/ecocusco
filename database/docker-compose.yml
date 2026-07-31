@@ -1,0 +1,17 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: sir_cusco_postgres
+    environment:
+      POSTGRES_DB: sir_cusco
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - sir_cusco_data:/var/lib/postgresql/data
+      - ./schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./seed.sql:/docker-entrypoint-initdb.d/02-seed.sql:ro
+
+volumes:
+  sir_cusco_data:

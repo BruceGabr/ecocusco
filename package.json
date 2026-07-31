@@ -1,0 +1,24 @@
+{
+  "name": "sir-cusco",
+  "version": "1.0.0",
+  "description": "Sistema inteligente de recoleccion de residuos solidos segregados para Cusco.",
+  "private": true,
+  "scripts": {
+    "dev:all": "powershell -ExecutionPolicy Bypass -File scripts/start-all.ps1",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "dev:geo": "npm --prefix backend-typescript run dev",
+    "dev:api": "python -m uvicorn app.main:app --reload --app-dir backend-python --host 0.0.0.0 --port 8000",
+    "check:geo": "npm --prefix backend-typescript run build",
+    "check:frontend": "npm --prefix frontend run build",
+    "check:backend": "cd backend-python && .\\.venv\\Scripts\\python.exe -m pytest -q",
+    "check:all": "npm run check:frontend && npm run check:backend"
+  },
+  "keywords": [
+    "residuos",
+    "cusco",
+    "scrum",
+    "mvp"
+  ],
+  "author": "",
+  "license": "MIT"
+}

@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: sir-cusco-api
+    runtime: python-3.11
+    rootDir: backend-python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: CORS_ORIGINS
+        value: http://localhost:5173,http://127.0.0.1:5173
+      - key: CORS_ORIGIN_REGEX
+        value: https://.*\.vercel\.app
+      - key: JWT_SECRET
+        sync: false
+
+  - type: web
+    name: sir-cusco-geo
+    runtime: node-20
+    rootDir: backend-typescript
+    buildCommand: npm install && npm run build
+    startCommand: npm start

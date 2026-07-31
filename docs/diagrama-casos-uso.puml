@@ -1,0 +1,78 @@
+@startuml SIR_Cusco_UseCases
+!define DIRECTION top to bottom
+!theme plain
+skinparam packageStyle rectangle
+skinparam actorStyle awesome
+skinparam usecase {
+    BackgroundColor #FEFEFE
+    BorderColor #333333
+    ArrowColor #333333
+}
+
+actor "👥 Ciudadano" as Ciudadano
+actor "🚨 Operador" as Operador
+actor "⚙️ Administrador" as Administrador
+actor "🚚 Conductor" as Conductor
+actor "🗺️ OpenStreetMap" as MapProvider
+
+rectangle "SIR Cusco - Sistema de Gestión de Residuos Sólidos" {
+    usecase "CU-001\nRegistrarse en el Sistema" as UC001
+    usecase "CU-002\nIniciar Sesión" as UC002
+    usecase "CU-003\nRecuperar Contraseña" as UC003
+    
+    usecase "CU-004\nConsultar Horarios\nde Recolección" as UC004
+    usecase "CU-005\nRecibir Alerta de\nCamión Cercano" as UC005
+    usecase "CU-006\nConsultar Guía de\nClasificación" as UC006
+    
+    usecase "CU-007\nReportar Incidencia" as UC007
+    usecase "CU-008\nMaker Seguimiento\nde Reporte" as UC008
+    usecase "CU-009\nVer Alertas del\nSistema" as UC009
+    usecase "CU-010\nMarcar Alerta\ncomo Resuelta" as UC010
+    
+    usecase "CU-011\nVisualizar Mapa\nOperativo" as UC011
+    usecase "CU-012\nRevisar Rutas\ny ETA" as UC012
+    usecase "CU-013\nVer Historial de\nRecolecciones" as UC013
+    
+    usecase "CU-014\nVer Estadísticas\ndel Servicio" as UC014
+}
+
+Ciudadano --> UC001
+Ciudadano --> UC002
+Ciudadano --> UC004
+Ciudadano --> UC005
+Ciudadano --> UC006
+Ciudadano --> UC007
+Ciudadano --> UC008
+
+Operador --> UC002
+Operador --> UC004
+Operador --> UC009
+Operador --> UC010
+Operador --> UC011
+Operador --> UC012
+Operador --> UC013
+
+Administrador --> UC002
+Administrador --> UC009
+Administrador --> UC010
+Administrador --> UC013
+Administrador --> UC014
+Administrador --> UC011
+
+Conductor --> UC002
+Conductor --> UC004
+Conductor --> UC005
+Conductor --> UC012
+Conductor --> UC013
+
+UC002 ..|> UC003 : <<extend>>
+UC007 ..|> UC008 : <<include>>
+UC009 ..|> UC010 : <<include>>
+UC011 ..|> UC012 : <<include>>
+
+note right of MapProvider
+  Proveedor externo
+  de mapas base
+end note
+
+@enduml
