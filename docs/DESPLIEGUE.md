@@ -150,7 +150,7 @@ Render permite crear **Web Services manuales** gratuitos sin tarjeta de crédito
 9. En **Environment**, agrega:
    - `JWT_SECRET`: genera un string robusto único (mínimo 32 caracteres aleatorios).
    - `DATABASE_URL`: pega la Internal Database URL del paso 3.1 si creaste PostgreSQL.
-   - `CORS_ORIGIN_REGEX`: `https://.*\.vercel\.app`
+   - `CORS_ORIGIN_REGEX`: `^https://ecocusco(-[a-z0-9-]+)?\.vercel\.app$`
    - `CORS_ORIGINS`: `http://localhost:5173,http://127.0.0.1:5173`
 10. Crea el servicio y espera a que quede **Live**.
 11. Anota la URL pública:
@@ -230,7 +230,7 @@ Railway se usa si Koyeb pide tarjeta de crédito. El backend Python ya tiene `ra
 3. Railway detecta `backend-python/railway.toml` automáticamente.
 4. Configurar variable de entorno:
    ```
-   CORS_ORIGIN_REGEX = https://.*\.vercel\.app
+   CORS_ORIGIN_REGEX = ^https://ecocusco(-[a-z0-9-]+)?\.vercel\.app$
    ```
 5. Desplegar → Railway genera una URL tipo:
    ```
@@ -255,10 +255,15 @@ VITE_GEO_URL = https://sir-cusco-api.up.railway.app
 
 | Variable            | Descripción                                   | Valor en producción                   |
 |--------------------|-----------------------------------------------|---------------------------------------|
-| `CORS_ORIGINS`      | Lista de URLs permitidas (separadas por `,`)  | `http://localhost:5173`               |
-| `CORS_ORIGIN_REGEX` | Regex para permitir dominios de Vercel        | `https://.*\.vercel\.app`             |
+| `APP_ENV`           | Marca el entorno. En cualquier valor distinto de `development` el backend exige `JWT_SECRET` | `production` |
+| `CORS_ORIGINS`      | Lista de URLs permitidas (separadas por `,`). En producción debe ser el dominio real del frontend, no localhost | `https://ecocusco.vercel.app` |
+| `CORS_ORIGIN_REGEX` | Regex para permitir dominios de Vercel        | `^https://ecocusco(-[a-z0-9-]+)?\.vercel\.app$`             |
 | `DATABASE_URL`      | URL de PostgreSQL (opcional)                  | `postgresql://user:pass@host/db`      |
-| `JWT_SECRET`        | Secreto para firmar tokens JWT (obligatorio en producción) | Genera un string robusto único |
+| `JWT_SECRET`        | Secreto para firmar tokens JWT. **Obligatorio en producción**: el backend se niega a arrancar si falta y hay `DATABASE_URL` o `APP_ENV` ≠ `development`, porque el valor por defecto está publicado en el repositorio y permitiría falsificar tokens de administrador | Genera un string robusto único (≥32 caracteres) |
+
+> **Sobre CORS y credenciales.** La API usa `allow_credentials=True`. Por eso `CORS_ORIGIN_REGEX` debe estar anclado al proyecto (`^...$`): un patrón abierto como `https://.*\.vercel\.app` autorizaría a **cualquier** despliegue de Vercel, incluido uno de terceros, a llamar a la API con las credenciales del usuario.
+
+> **Sobre `frontend/.env.production`.** Ese archivo está versionado y Vite lo carga durante `npm run build`, así que **no debe contener URLs**: quedarían horneadas en el bundle. Define `VITE_API_URL` y `VITE_GEO_URL` como variables de entorno en Vercel.
 
 ### Frontend (`frontend/.env` o variables en Vercel)
 
@@ -395,7 +400,7 @@ GET /api/truck-locations  → Posiciones GPS de camiones en tiempo real
 
 ## 6.1 Pruebas de despliegue
 
-- Validar el frontend con `npx vitest run`: `11 passed`.
+- Validar el frontend con `npx vitest run`: `12 passed`.
 - Validar el backend Python con `pytest -q`: `16 passed`.
 - Ejecutar `npm run build` para confirmar el build de producción del frontend.
 - Confirmar envíos operativos y CRUD administrativos a través de la UI del panel de administración.
@@ -455,7 +460,7 @@ Esta sesión documenta el paso a paso para completar el despliegue de la rama `v
    - `JWT_SECRET`: generar un string robusto único (mínimo 32 caracteres, aleatorio).
    - `DATABASE_URL`: URL de PostgreSQL si se desea persistencia (opcional para modo demo).
    - `CORS_ORIGINS`: agregar la URL final de Vercel cuando esté lista.
-   - `CORS_ORIGIN_REGEX`: `https://.*\.vercel\.app`
+   - `CORS_ORIGIN_REGEX`: `^https://ecocusco(-[a-z0-9-]+)?\.vercel\.app$`
 6. Esperar estado **Live** en ambos servicios.
 7. Anotar las URLs públicas:
    ```
@@ -492,7 +497,7 @@ Esta sesión documenta el paso a paso para completar el despliegue de la rama `v
 4. Configurar variables de entorno:
    - `JWT_SECRET`: string robusto único.
    - `DATABASE_URL`: opcional.
-   - `CORS_ORIGIN_REGEX`: `https://.*\.vercel\.app`
+   - `CORS_ORIGIN_REGEX`: `^https://ecocusco(-[a-z0-9-]+)?\.vercel\.app$`
 5. Desplegar → Railway genera URL tipo:
    ```
    https://sir-cusco-api.up.railway.app

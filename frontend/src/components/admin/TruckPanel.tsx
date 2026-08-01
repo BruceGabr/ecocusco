@@ -2,69 +2,183 @@ import React, { FormEvent, useEffect, useMemo, useState } from "react";
 import { Truck, Zone } from "../../types";
 import { request } from "../../api";
 import { Panel } from "../Panel";
+import { Button } from "../Button";
 import { Icon } from "../Icon";
-import Item from "../Item";
+import { Modal } from "../Modal";
+import { DataTable, Column } from "../DataTable";
+import { Toolbar, FilterSelect } from "../Toolbar";
+import { Pagination, paginate } from "../Pagination";
+import { Select } from "../Select";
+import { StatusBadge } from "../StatusBadge";
+import { TRUCK_STATUSES, toOptions } from "../../constants";
+import { collectErrors, errorProps, FieldErrors } from "../../utils/validation";
+
+const PAGE_SIZE = 8;
+
+type TruckForm = { code: string; driver: string; status: string; zone_id: number; latitude: number; longitude: number };
+const EMPTY_FORM: TruckForm = { code: "", driver: "", status: TRUCK_STATUSES[0], zone_id: 0, latitude: 0, longitude: 0 };
 
 export function TruckPanel({ zones, trucks: initialTrucks }: { zones: Zone[]; trucks: Truck[] }) {
   const [trucks, setTrucks] = useState<Truck[]>(initialTrucks);
-  const [truckDriverSearch, setTruckDriverSearch] = useState("");
-  const [truckStatusFilter, setTruckStatusFilter] = useState("Todos");
-  const [newTruck, setNewTruck] = useState({ code: "", driver: "", status: "En ruta", zone: zones?.[0]?.name ?? "Centro Historico", latitude: 0, longitude: 0 });
   const [feedback, setFeedback] = useState("");
+  const [isError, setIsError] = useState(false);
+  const [errors, setErrors] = useState<FieldErrors>({});
+  const [page, setPage] = useState(1);
+
+  const [statusFilter, setStatusFilter] = useState("");
+  const [zoneFilter, setZoneFilter] = useState("");
+  const [driverFilter, setDriverFilter] = useState("");
+
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [form, setForm] = useState<TruckForm>(EMPTY_FORM);
 
   useEffect(() => {
     setTrucks(initialTrucks ?? []);
-    setNewTruck(prev => ({ ...prev, zone: zones?.[0]?.name ?? prev.zone }));
-  }, [initialTrucks, zones]);
+  }, [initialTrucks]);
 
-  const filteredTrucks = useMemo(
-    () => trucks.filter(truck => {
-      const driver = truck.driver ?? "";
-      const matchesDriver = driver.toLowerCase().includes(truckDriverSearch.toLowerCase().trim());
-      const matchesStatus = truckStatusFilter === "Todos" || truck.status === truckStatusFilter;
-      return matchesDriver && matchesStatus;
-    }),
-    [trucks, truckDriverSearch, truckStatusFilter]
+  const zoneOptions = useMemo(() => (zones ?? []).map(zone => ({ value: String(zone.id), label: zone.name })), [zones]);
+  // Los conductores salen de los datos: es un catálogo cerrado y finito, así que
+  // un desplegable es más útil que escribir el nombre a ciegas.
+  const driverOptions = useMemo(
+    () => toOptions([...new Set(trucks.map(truck => truck.driver).filter(Boolean))] as string[]),
+    [trucks]
   );
 
-  async function createTruck(event: FormEvent<HTMLFormElement>) {
+  const filtered = useMemo(() => trucks.filter(truck => {
+    const matchesStatus = !statusFilter || truck.status === statusFilter;
+    const matchesZone = !zoneFilter || truck.zone === zoneFilter;
+    const matchesDriver = !driverFilter || truck.driver === driverFilter;
+    return matchesStatus && matchesZone && matchesDriver;
+  }), [trucks, statusFilter, zoneFilter, driverFilter]);
+
+  useEffect(() => { setPage(1); }, [statusFilter, zoneFilter, driverFilter]);
+
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const currentPage = Math.min(page, pageCount);
+  const visible = paginate(filtered, currentPage, PAGE_SIZE);
+
+  function report(message: string, error = false) {
+    setFeedback(message);
+    setIsError(error);
+  }
+
+  function openCreate() {
+    setEditingId(null);
+    setForm({ ...EMPTY_FORM, zone_id: zones?.[0]?.id ?? 0 });
+    setErrors({});
+    setModalOpen(true);
+  }
+
+  function openEdit(truck: Truck) {
+    setEditingId(truck.id);
+    setForm({
+      code: truck.code,
+      driver: truck.driver ?? "",
+      status: truck.status,
+      zone_id: truck.zone_id ?? (zones ?? []).find(zone => zone.name === truck.zone)?.id ?? 0,
+      latitude: truck.latitude,
+      longitude: truck.longitude,
+    });
+    setErrors({});
+    setModalOpen(true);
+  }
+
+  async function submitForm(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const found = collectErrors(event.currentTarget);
+    if (Object.keys(found).length > 0) { setErrors(found); return; }
+    setErrors({});
+    if (!form.zone_id) { report("Selecciona una zona válida", true); return; }
     try {
-      const created = await request<Truck>('/trucks', {
-        method: 'POST',
-        body: JSON.stringify(newTruck)
-      });
-      setTrucks(prev => [...prev, created]);
-      setNewTruck({ code: '', driver: '', status: 'En ruta', zone: zones?.[0]?.name ?? 'Centro Historico', latitude: 0, longitude: 0 });
-      setFeedback(`Camión creado: ${created.code}`);
+      if (editingId === null) {
+        // zone_id numérico: enviar el nombre de la zona hacía fallar la
+        // creación con 422 porque el modelo del backend no lo acepta.
+        const created = await request<Truck>('/trucks', { method: 'POST', body: JSON.stringify(form) });
+        setTrucks(prev => [...prev, created]);
+        report(`Camión creado: ${created.code}`);
+      } else {
+        const updated = await request<Truck>(`/trucks/${editingId}`, { method: 'PATCH', body: JSON.stringify(form) });
+        setTrucks(prev => prev.map(truck => truck.id === editingId ? { ...truck, ...updated } : truck));
+        report(`Camión actualizado: ${updated.code}`);
+      }
+      setModalOpen(false);
+      setEditingId(null);
     } catch (error) {
-      setFeedback(error instanceof Error ? error.message : 'No se pudo crear el camión');
+      report(error instanceof Error ? error.message : 'No se pudo guardar el camión', true);
     }
   }
 
+  async function deleteTruck(truck: Truck) {
+    try {
+      await request(`/trucks/${truck.id}`, { method: 'DELETE' });
+      setTrucks(prev => prev.filter(item => item.id !== truck.id));
+      report('Camión eliminado');
+    } catch (error) {
+      report(error instanceof Error ? error.message : 'No se pudo eliminar el camión', true);
+    }
+  }
+
+  const columns: Column<Truck>[] = [
+    { key: "code", header: "Código", render: truck => <strong>{truck.code}</strong> },
+    { key: "driver", header: "Conductor", render: truck => truck.driver ?? "Sin conductor" },
+    { key: "zone", header: "Zona", render: truck => truck.zone },
+    { key: "status", header: "Estado", render: truck => <StatusBadge status={truck.status} /> },
+    {
+      key: "actions",
+      header: "",
+      align: "right",
+      render: truck => (
+        <div className="table-actions">
+          <Button size="sm" onClick={() => openEdit(truck)}><Icon name="edit" size={15} /> Editar camión</Button>
+          <Button size="sm" variant="danger" onClick={() => deleteTruck(truck)}><Icon name="trash" size={15} /> Eliminar camión</Button>
+        </div>
+      ),
+    },
+  ];
+
   return (
     <Panel title="Gestión de camiones">
-      <p>Filtra y administra el estado de los vehículos de recolección.</p>
-      <div className="search-box">
-        <Icon name="search" size={18} />
-        <input type="text" placeholder="Buscar por conductor" value={truckDriverSearch} onChange={event => setTruckDriverSearch(event.currentTarget.value)} aria-label="Buscar por conductor" />
-      </div>
-      <div className="filter-bar">
-        {['Todos', 'En ruta', 'Mantenimiento'].map(option => (
-          <button key={option} type="button" className={`filter-btn ${truckStatusFilter === option ? 'active' : ''}`} onClick={() => setTruckStatusFilter(option)}>{option}</button>
-        ))}
-      </div>
-      <form className="form-grid" onSubmit={createTruck}>
-        <label htmlFor="truck-code">Código<input id="truck-code" required value={newTruck.code} onChange={event => setNewTruck(prev => ({ ...prev, code: event.currentTarget.value }))} /></label>
-        <label htmlFor="truck-driver">Conductor<input id="truck-driver" required value={newTruck.driver} onChange={event => setNewTruck(prev => ({ ...prev, driver: event.currentTarget.value }))} /></label>
-        <label htmlFor="truck-status">Estado<select id="truck-status" value={newTruck.status} onChange={event => setNewTruck(prev => ({ ...prev, status: event.currentTarget.value }))}><option>En ruta</option><option>Mantenimiento</option><option>Disponible</option></select></label>
-        <label htmlFor="truck-zone">Zona<select id="truck-zone" value={newTruck.zone} onChange={event => setNewTruck(prev => ({ ...prev, zone: event.currentTarget.value }))}>{zones?.map((zone, index) => <option key={`zone-${zone.id}-${index}`} value={zone.name}>{zone.name}</option>)}</select></label>
-        <button type="submit">Crear camión</button>
-      </form>
-      {feedback && <p className="hint success" aria-live="polite">{feedback}</p>}
-      <ul className="list" aria-label="Lista de camiones">
-        {filteredTrucks.map((truck, index) => <li key={`truck-${truck.id}-${index}`}><Item title={`${truck.code} · ${truck.driver ?? 'Sin conductor'}`} detail={`${truck.zone} · ${truck.status}`} color={truck.status === 'Mantenimiento' ? 'yellow' : 'blue'} /></li>)}
-      </ul>
+      <Toolbar
+        filters={
+          <>
+            <FilterSelect label="Estado" value={statusFilter} onChange={setStatusFilter} options={toOptions(TRUCK_STATUSES)} allLabel="Todos" />
+            <FilterSelect label="Zona" value={zoneFilter} onChange={setZoneFilter} options={(zones ?? []).map(zone => ({ value: zone.name, label: zone.name }))} allLabel="Todas" />
+            <FilterSelect label="Conductor" value={driverFilter} onChange={setDriverFilter} options={driverOptions} allLabel="Todos" />
+          </>
+        }
+        action={<button type="button" className="btn primary" onClick={openCreate}>Crear camión</button>}
+      />
+
+      {feedback && <p className={`hint ${isError ? "error" : "success"}`} aria-live="polite">{feedback}</p>}
+
+      <DataTable
+        columns={columns}
+        rows={visible}
+        rowKey={(truck, index) => `truck-${truck.id}-${index}`}
+        caption="Lista de camiones"
+        emptyMessage="No hay camiones que coincidan con el filtro"
+      />
+      <Pagination page={currentPage} pageCount={pageCount} total={filtered.length} onChange={setPage} />
+
+      <Modal open={modalOpen} title={editingId === null ? "Nuevo camión" : "Editar camión"} onClose={() => setModalOpen(false)}>
+        <form className="form-grid" onSubmit={submitForm} noValidate>
+          <label htmlFor="truck-code">Código
+            <input id="truck-code" required value={form.code} onChange={event => setForm(prev => ({ ...prev, code: event.currentTarget.value }))} {...errorProps("truck-code", errors)} />
+            {errors["truck-code"] && <span className="field-error" id="truck-code-error">{errors["truck-code"]}</span>}
+          </label>
+          <label htmlFor="truck-driver">Conductor
+            <input id="truck-driver" required value={form.driver} onChange={event => setForm(prev => ({ ...prev, driver: event.currentTarget.value }))} {...errorProps("truck-driver", errors)} />
+            {errors["truck-driver"] && <span className="field-error" id="truck-driver-error">{errors["truck-driver"]}</span>}
+          </label>
+          <label htmlFor="truck-status">Estado<Select id="truck-status" value={form.status} onChange={value => setForm(prev => ({ ...prev, status: value }))} options={toOptions(TRUCK_STATUSES)} /></label>
+          <label htmlFor="truck-zone">Zona<Select id="truck-zone" value={String(form.zone_id)} onChange={value => setForm(prev => ({ ...prev, zone_id: Number(value) }))} options={zoneOptions} placeholder="Selecciona una zona" /></label>
+          <div className="form-actions">
+            <Button onClick={() => setModalOpen(false)}>Cancelar</Button>
+            <button type="submit" className="btn primary">{editingId === null ? "Crear camión" : "Guardar cambios"}</button>
+          </div>
+        </form>
+      </Modal>
     </Panel>
   );
 }

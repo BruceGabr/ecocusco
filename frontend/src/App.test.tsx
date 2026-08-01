@@ -153,6 +153,29 @@ afterAll(async () => {
   }
 });
 
+/**
+ * Los desplegables usan el componente Select propio (combobox + listbox), no un
+ * <select> nativo, así que se interactúa abriendo la lista y eligiendo opción
+ * en vez de con fireEvent.change.
+ */
+function chooseOption(label: RegExp | string, optionName: RegExp | string) {
+  fireEvent.click(screen.getByLabelText(label));
+  fireEvent.click(screen.getByRole("option", { name: optionName }));
+}
+
+/** Elige la primera opción de la lista (equivale al primer registro del catálogo). */
+function chooseFirstOption(label: RegExp | string) {
+  fireEvent.click(screen.getByLabelText(label));
+  fireEvent.click(screen.getAllByRole("option")[0]);
+}
+
+/** Administración está organizada por pestañas: solo se monta el panel activo. */
+async function openAdminTab(name: string) {
+  // findBy*: al entrar en Administración los datos pueden seguir cargando,
+  // así que la pestaña todavía no está montada.
+  fireEvent.click(await screen.findByRole("tab", { name }));
+}
+
 describe("App e2e integration", () => {
   it("loads the real backend and performs a route update", async () => {
     await authenticateAdmin();
@@ -161,10 +184,11 @@ describe("App e2e integration", () => {
 
     await screen.findByRole("heading", { name: /Panel Principal/i });
     fireEvent.click(screen.getByRole("button", { name: /Administración/i }));
+    await openAdminTab("Eventos");
     await screen.findByRole("heading", { name: /Eventos operativos/i });
 
-    fireEvent.change(screen.getByLabelText(/Tipo de evento/i), { target: { value: "route_update" } });
-    fireEvent.change(screen.getByLabelText(/Objetivo/i), { target: { value: "1" } });
+    chooseOption(/Tipo de evento/i, /Actualización de ruta/i);
+    chooseFirstOption(/Objetivo/i);
     fireEvent.change(screen.getByLabelText(/Progreso/i), { target: { value: "92" } });
     fireEvent.change(screen.getByLabelText(/Retraso/i), { target: { value: "Retraso leve" } });
 
@@ -181,10 +205,11 @@ describe("App e2e integration", () => {
 
     await screen.findByRole("heading", { name: /Panel Principal/i });
     fireEvent.click(screen.getByRole("button", { name: /Administración/i }));
+    await openAdminTab("Eventos");
     await screen.findByRole("heading", { name: /Eventos operativos/i });
 
-    fireEvent.change(screen.getByLabelText(/Tipo de evento/i), { target: { value: "container_update" } });
-    fireEvent.change(screen.getByLabelText(/Objetivo/i), { target: { value: "1" } });
+    chooseOption(/Tipo de evento/i, /Actualización de contenedor/i);
+    chooseFirstOption(/Objetivo/i);
     fireEvent.change(screen.getByLabelText(/Llenado/i), { target: { value: "95" } });
     const statusInput = screen.getAllByLabelText(/Estado/i)[0];
     fireEvent.change(statusInput, { target: { value: "Lleno" } });
@@ -196,10 +221,26 @@ describe("App e2e integration", () => {
   });
 
   it("allows a user to reset a password from the forgot-password form", async () => {
+    // Se usa una cuenta desechable en vez de la de administrador: al mutar la
+    // contraseña compartida, cualquier fallo en la restauración dejaba rotos
+    // todos los tests posteriores, que hacen authenticateAdmin().
+    const throwawayEmail = `reset-${Date.now()}@ecocusco.pe`;
+    await fetch(`${backendUrl}/api/auth/register`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Usuario Reset",
+        email: throwawayEmail,
+        password: "initialPass123",
+        role: "ciudadano",
+        zone: "Centro Historico",
+      }),
+    });
+
     const forgotResponse = await fetch(`${backendUrl}/api/auth/forgot-password`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: "admin@ecocusco.pe" }),
+      body: JSON.stringify({ email: throwawayEmail }),
     });
     const forgotPayload = await forgotResponse.json();
     const token = forgotPayload.token as string;
@@ -207,24 +248,13 @@ describe("App e2e integration", () => {
     render(<App />);
 
     fireEvent.click(screen.getByRole("button", { name: /Recuperar contraseña/i }));
-    fireEvent.change(screen.getByLabelText(/Correo Electrónico/i), { target: { value: "admin@ecocusco.pe" } });
+    fireEvent.change(screen.getByLabelText(/Correo Electrónico/i), { target: { value: throwawayEmail } });
     fireEvent.change(screen.getByLabelText(/Token de recuperación/i), { target: { value: token } });
     fireEvent.change(screen.getByLabelText(/Nueva contraseña/i), { target: { value: "newPassword123" } });
     fireEvent.click(screen.getByRole("button", { name: /Restablecer contraseña/i }));
 
     await waitFor(() => expect(screen.getByText(/Contraseña actualizada correctamente/i)).toBeInTheDocument());
-
-    const restoreForgot = await fetch(`${backendUrl}/api/auth/forgot-password`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: "admin@ecocusco.pe" }),
-    });
-    const restorePayload = await restoreForgot.json();
-    await fetch(`${backendUrl}/api/auth/reset-password`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token: restorePayload.token, password: "admin123" }),
-    });
+    // No hace falta restaurar nada: la cuenta admin no se tocó.
   });
 
   it("shows the admin users management panel for admins", async () => {
@@ -246,11 +276,19 @@ describe("App e2e integration", () => {
     await screen.findByRole("heading", { name: /Panel Principal/i });
     fireEvent.click(screen.getByRole("button", { name: /Administración/i }));
 
+    // Cada sección vive en su pestaña, con una única acción principal visible.
+    await openAdminTab("Zonas");
     await waitFor(() => expect(screen.getByRole("heading", { name: /Gestión de zonas/i })).toBeInTheDocument());
     expect(screen.getByRole("button", { name: /Crear zona/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Crear horario/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Crear camión/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Crear mantenimiento/i })).toBeInTheDocument();
+
+    await openAdminTab("Horarios");
+    await waitFor(() => expect(screen.getByRole("button", { name: /Crear horario/i })).toBeInTheDocument());
+
+    await openAdminTab("Camiones");
+    await waitFor(() => expect(screen.getByRole("button", { name: /Crear camión/i })).toBeInTheDocument());
+
+    await openAdminTab("Mantenimiento");
+    await waitFor(() => expect(screen.getByRole("button", { name: /Crear mantenimiento/i })).toBeInTheDocument());
   });
 
   it("allows admins to edit and delete a zone from the admin panel", async () => {
@@ -261,17 +299,18 @@ describe("App e2e integration", () => {
     await screen.findByRole("heading", { name: /Panel Principal/i });
     fireEvent.click(screen.getByRole("button", { name: /Administración/i }));
 
+    await openAdminTab("Zonas");
     await waitFor(() => expect(screen.getByRole("heading", { name: /Gestión de zonas/i })).toBeInTheDocument());
     const editButtons = screen.getAllByRole("button", { name: /Editar zona/i });
     fireEvent.click(editButtons[0]);
-    fireEvent.change(screen.getByLabelText(/Nombre de la zona/i), { target: { value: "Centro Histórico Actualizado" } });
+    fireEvent.change(screen.getByLabelText(/Nombre de la zona/i), { target: { value: "Cusco Actualizado" } });
     fireEvent.click(screen.getByRole("button", { name: /Guardar cambios/i }));
 
-    await waitFor(() => expect(screen.getAllByText(/Centro Histórico Actualizado/i).length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getAllByText(/Cusco Actualizado/i).length).toBeGreaterThan(0));
 
     const deleteButtons = screen.getAllByRole("button", { name: /Eliminar zona/i });
     fireEvent.click(deleteButtons[0]);
-    await waitFor(() => expect(screen.queryByText(/Centro Histórico Actualizado/i)).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByText(/Cusco Actualizado/i)).not.toBeInTheDocument());
   });
 
   it("shows a filter input for zones in the admin panel", async () => {
@@ -282,9 +321,11 @@ describe("App e2e integration", () => {
     await screen.findByRole("heading", { name: /Panel Principal/i });
     fireEvent.click(screen.getByRole("button", { name: /Administración/i }));
 
+    await openAdminTab("Zonas");
     await waitFor(() => expect(screen.getByRole("heading", { name: /Gestión de zonas/i })).toBeInTheDocument());
-    const filterInput = screen.getByPlaceholderText(/Filtrar zonas/i);
-    expect(filterInput).toBeInTheDocument();
+    // Los filtros son desplegables del catálogo, no búsqueda de texto libre.
+    expect(screen.getByRole("combobox", { name: /Zona/i })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: /Criticidad/i })).toBeInTheDocument();
   });
 
   it("shows truck search and status filters in the admin panel", async () => {
@@ -295,10 +336,11 @@ describe("App e2e integration", () => {
     await screen.findByRole("heading", { name: /Panel Principal/i });
     fireEvent.click(screen.getByRole("button", { name: /Administración/i }));
 
+    await openAdminTab("Camiones");
     await waitFor(() => expect(screen.getByRole("heading", { name: /Gestión de camiones/i })).toBeInTheDocument());
-    expect(screen.getByPlaceholderText(/Buscar por conductor/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /En ruta/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /^Mantenimiento$/i })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: /Estado/i })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: /Zona/i })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: /Conductor/i })).toBeInTheDocument();
   });
 
   it("shows maintenance status filters in the admin panel", async () => {
@@ -309,8 +351,9 @@ describe("App e2e integration", () => {
     await screen.findByRole("heading", { name: /Panel Principal/i });
     fireEvent.click(screen.getByRole("button", { name: /Administración/i }));
 
+    await openAdminTab("Mantenimiento");
     await waitFor(() => expect(screen.getByRole("heading", { name: /Gestión de mantenimiento/i })).toBeInTheDocument());
-    expect(screen.getByRole("button", { name: /Pendiente/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Completado/i })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: /Estado/i })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: /Camión/i })).toBeInTheDocument();
   });
 });

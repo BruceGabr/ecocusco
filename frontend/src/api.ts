@@ -2,13 +2,16 @@ export async function request<T>(path: string, options: RequestInit = {}): Promi
   try {
     const apiBase = import.meta.env.VITE_API_URL ?? "/api";
     const token = localStorage.getItem("sir-token");
+    // `headers` se extrae de options: si se dejara dentro del spread posterior,
+    // sobrescribiría el objeto ya combinado y se perderían Content-Type y Authorization.
+    const { headers: optionHeaders, ...restOptions } = options;
     const response = await fetch(`${apiBase}${path}`, {
+      ...restOptions,
       headers: {
         "Content-Type": "application/json",
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(options.headers ?? {})
-      },
-      ...options
+        ...(optionHeaders ?? {})
+      }
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {

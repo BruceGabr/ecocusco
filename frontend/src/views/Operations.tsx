@@ -1,6 +1,7 @@
-import React, { FormEvent, useState } from "react";
+import React, { FormEvent, useEffect, useMemo, useState } from "react";
 import { Bootstrap, Monitor, OperationUpdatePayload } from "../types";
 import { Panel } from "../components/Panel";
+import { Select } from "../components/Select";
 import Item from "../components/Item";
 
 export function Operations({ data, monitor, onOperationUpdate }: { data: Bootstrap; monitor: Monitor; onOperationUpdate: (payload: OperationUpdatePayload) => Promise<void>; }) {
@@ -15,13 +16,29 @@ export function Operations({ data, monitor, onOperationUpdate }: { data: Bootstr
   const containers = (effectiveData.containers?.length ? effectiveData.containers : data.containers) ?? [];
   const recentEvents = (effectiveData.notifications?.length ? effectiveData.notifications : data.notifications) ?? [];
   const [eventType, setEventType] = useState<"route_update" | "container_update">("route_update");
+  // Tipo y objetivo viven en el estado: el Select propio no es un control
+  // nativo y no aparece en el FormData.
+  const [eventTargetId, setEventTargetId] = useState<number>(0);
+
+  const targets = useMemo(
+    () => (eventType === "route_update" ? routes : containers),
+    [eventType, routes, containers]
+  );
+
+  // El objetivo debe pertenecer siempre a la lista del tipo activo.
+  useEffect(() => {
+    if (!targets.length) return;
+    if (!targets.some(target => target.id === eventTargetId)) {
+      setEventTargetId(targets[0].id);
+    }
+  }, [targets, eventTargetId]);
 
   async function submitEventUpdate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
     const payload: OperationUpdatePayload = {
-      type: formData.get("type") as "route_update" | "container_update",
-      id: Number(formData.get("targetId")) || 0,
+      type: eventType,
+      id: eventTargetId || 0,
       note: String(formData.get("note") || "").trim() || undefined,
     };
 
@@ -61,9 +78,9 @@ export function Operations({ data, monitor, onOperationUpdate }: { data: Bootstr
         <div className="list">
           <Item title="Recomendación" detail={recommendation} color="red" />
           <Item title="Plan de intervención" detail={actionDetail} color="yellow" />
-          {plan.map((step, index) => <Item key={`${step.title}-${index}`} title={step.title} detail={`${step.detail} · Prioridad ${step.priority}`} color={step.priority === "alta" ? "red" : "blue"} />)}
+          {plan.map((step, index) => <Item key={`${step.title}-${index}`} title={step.title} detail={`${step.detail} · Prioridad ${step.priority}`} color={step.priority === "alta" ? "red" : "neutral"} />)}
           {topZone && <Item title="Zona crítica" detail={`${topZone.name} · Puntaje ${topZone.priority_score} · ${topZone.criticality}`} color="yellow" />}
-          {topRoute && <Item title="Ruta priorizada" detail={`${topRoute.truck} · ${topRoute.zone} · ${topRoute.eta} · ${topRoute.delay}`} color="blue" />}
+          {topRoute && <Item title="Ruta priorizada" detail={`${topRoute.truck} · ${topRoute.zone} · ${topRoute.eta} · ${topRoute.delay}`} color="neutral" />}
         </div>
       </Panel>
       <Panel title="Monitoreo operativo">
@@ -73,27 +90,34 @@ export function Operations({ data, monitor, onOperationUpdate }: { data: Bootstr
       </Panel>
       <Panel title="Eventos recientes">
         <div className="list">
-          {recentEvents.length === 0 ? <p>No hay eventos operativos recientes.</p> : recentEvents.map(event => <Item key={event.id} title={event.title} detail={event.message} color="blue" />)}
+          {recentEvents.length === 0 ? <p>No hay eventos operativos recientes.</p> : recentEvents.map(event => <Item key={event.id} title={event.title} detail={event.message} color="neutral" />)}
         </div>
       </Panel>
       <Panel title="Eventos operativos">
         <form className="form-grid" onSubmit={submitEventUpdate}>
-          <label>
+          <label htmlFor="ops-event-type">
             Tipo de evento
-            <select name="type" value={eventType} onChange={(event) => setEventType(event.currentTarget.value as "route_update" | "container_update") }>
-              <option value="route_update">Actualización de ruta</option>
-              <option value="container_update">Actualización de contenedor</option>
-            </select>
+            <Select
+              id="ops-event-type"
+              value={eventType}
+              onChange={value => setEventType(value as "route_update" | "container_update")}
+              options={[
+                { value: "route_update", label: "Actualización de ruta" },
+                { value: "container_update", label: "Actualización de contenedor" },
+              ]}
+            />
           </label>
-          <label>
+          <label htmlFor="ops-event-target">
             Objetivo
-            <select name="targetId">
-              {eventType === "route_update" ? (
-                routes.map(route => <option key={route.id} value={route.id}>{`Ruta ${route.truck} - ${route.zone}`}</option>)
-              ) : (
-                containers.map(container => <option key={container.id} value={container.id}>{`${container.name} (${container.fill_level}%)`}</option>)
-              )}
-            </select>
+            <Select
+              id="ops-event-target"
+              value={String(eventTargetId)}
+              onChange={value => setEventTargetId(Number(value))}
+              options={eventType === "route_update"
+                ? routes.map(route => ({ value: String(route.id), label: `Ruta ${route.truck} - ${route.zone}` }))
+                : containers.map(container => ({ value: String(container.id), label: `${container.name} (${container.fill_level}%)` }))}
+              placeholder="Selecciona un objetivo"
+            />
           </label>
           {eventType === "route_update" ? (
             <>
@@ -127,20 +151,20 @@ export function Operations({ data, monitor, onOperationUpdate }: { data: Bootstr
       </Panel>
       <Panel title="Asignaciones de despacho">
         <div className="list">
-          {assignments.length === 0 ? <p>No hay asignaciones activas.</p> : assignments.map(assignment => <Item key={assignment.route_id} title={`${assignment.truck_code} · ${assignment.zone}`} detail={`${assignment.action} · Prioridad ${assignment.priority} · ETA ${assignment.eta}`} color={assignment.priority === "Alta" ? "red" : "blue"} />)}
+          {assignments.length === 0 ? <p>No hay asignaciones activas.</p> : assignments.map(assignment => <Item key={assignment.route_id} title={`${assignment.truck_code} · ${assignment.zone}`} detail={`${assignment.action} · Prioridad ${assignment.priority} · ETA ${assignment.eta}`} color={assignment.priority === "Alta" ? "red" : "neutral"} />)}
         </div>
       </Panel>
       <Panel title="Prioridad de zonas y rutas">
         <div className="list">
-          {(data.prioritized_zones ?? []).map(zone => <Item key={zone.id} title={zone.name} detail={`Prioridad ${zone.priority_score} | ${zone.criticality}`} color={zone.priority_score >= 5 ? "red" : "blue"} />)}
-          {(data.optimized_routes ?? []).map(route => <Item key={route.id} title={`Ruta ${route.truck}`} detail={`${route.zone} | ${route.eta} | ${route.delay}`} color={route.delay.includes("Retraso") ? "yellow" : "blue"} />)}
-          {(data.truck_assignments ?? []).map(assignment => <Item key={assignment.route_id} title={`Asignación ${assignment.truck_code}`} detail={`${assignment.zone} · ${assignment.priority} · ETA ${assignment.eta}`} color={assignment.priority === "Alta" ? "red" : "blue"} />)}
+          {(data.prioritized_zones ?? []).map(zone => <Item key={zone.id} title={zone.name} detail={`Prioridad ${zone.priority_score} | ${zone.criticality}`} color={zone.priority_score >= 5 ? "red" : "neutral"} />)}
+          {(data.optimized_routes ?? []).map(route => <Item key={route.id} title={`Ruta ${route.truck}`} detail={`${route.zone} | ${route.eta} | ${route.delay}`} color={route.delay.includes("Retraso") ? "yellow" : "green"} />)}
+          {(data.truck_assignments ?? []).map(assignment => <Item key={assignment.route_id} title={`Asignación ${assignment.truck_code}`} detail={`${assignment.zone} · ${assignment.priority} · ETA ${assignment.eta}`} color={assignment.priority === "Alta" ? "red" : "neutral"} />)}
         </div>
       </Panel>
       <Panel title="Contenedores y mantenimiento">
         <div className="list">
-          {(data.containers ?? []).map(container => <Item key={container.id} title={container.name} detail={`${container.fill_level}% | ${container.status}`} color={container.fill_level >= 80 ? "red" : "blue"} />)}
-          {(data.maintenance ?? []).map(item => <Item key={item.id} title={`Mantenimiento #${item.id}`} detail={`${item.description} | ${item.status}`} color={item.status === "Pendiente" ? "yellow" : "blue"} />)}
+          {(data.containers ?? []).map(container => <Item key={container.id} title={container.name} detail={`${container.fill_level}% | ${container.status}`} color={container.fill_level >= 80 ? "red" : "green"} />)}
+          {(data.maintenance ?? []).map(item => <Item key={item.id} title={`Mantenimiento #${item.id}`} detail={`${item.description} | ${item.status}`} color={item.status === "Pendiente" ? "yellow" : "green"} />)}
         </div>
       </Panel>
     </div>

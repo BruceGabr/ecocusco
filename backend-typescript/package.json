@@ -9,6 +9,7 @@
     "start": "node dist/server.js"
   },
   "dependencies": {
+    "sir-cusco": "file:..",
     "tsx": "^4.19.0",
     "typescript": "^5.8.0"
   },

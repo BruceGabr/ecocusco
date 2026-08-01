@@ -30,7 +30,7 @@ Sistema inteligente para la recoleccion de residuos solidos segregados en la ciu
 - Corregido el flujo de actualización de contenedores para que el backend devuelva el nivel de llenado almacenado y genere notificaciones operativas.
 - Dependencias de pruebas actualizadas: `backend-python/requirements.txt` incluye `httpx2` para que `fastapi.testclient` funcione correctamente.
 - Seguridad reforzada con un valor por defecto de `JWT_SECRET` más robusto y recomendación de usar una variable de entorno segura en producción.
-- Validación completa: build del frontend verificado localmente con `npm run build`, pruebas de backend con `16 passed` y pruebas de frontend con `11 passed` en la suite de integración real del panel administrativo.
+- Validación completa: build del frontend verificado localmente con `npm run build`, pruebas de backend con `47 passed` y pruebas de frontend con `12 passed` en la suite de integración real del panel administrativo.
 - Accesibilidad mejorada en el panel administrativo: contraste WCAG AA, navegación por teclado con skip-link y focus-visible, touch targets mínimos de 44px y prevención de scroll horizontal en móvil.
 - Configuración de despliegue lista para producción: `render.yaml`, `railway.toml`, `vercel.json` y variables de entorno documentadas. Ruta recomendada: Render + Vercel (Web Services manuales gratuitos sin tarjeta de crédito). Solo falta ejecutar el despliegue siguiendo el checklist de `docs/DESPLIEGUE.md`.
 
@@ -91,9 +91,12 @@ El backend ahora incluye pruebas de flujo en `backend-python/tests/test_operatio
 Para ejecutar las pruebas:
 
 ```powershell
+.\.venv\Scripts\python.exe -m pip install -r backend-python\requirements-dev.txt
 cd backend-python
-.\.venv\Scripts\python.exe -m pytest -q
+..\.venv\Scripts\python.exe -m pytest -q
 ```
+
+> `pytest` vive en `requirements-dev.txt`, no en `requirements.txt`, para no instalarlo en el despliegue.
 
 ## Pruebas de UI del frontend
 El frontend ahora incluye pruebas de integración que validan:

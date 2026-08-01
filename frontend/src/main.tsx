@@ -8,6 +8,8 @@ import { request } from "./api";
 import { Bootstrap, Monitor, OperationUpdatePayload, Report, Session, View } from "./types";
 import { emptyBootstrap, getOperationalSignal, viewLabels, views } from "./constants";
 import { useMonitor } from "./hooks/useMonitor";
+import { ToastStack, useToasts } from "./components/Toast";
+import { NotificationsMenu } from "./components/NotificationsMenu";
 import { AuthView } from "./views/AuthView";
 import { Dashboard } from "./views/Dashboard";
 import { Schedules } from "./views/Schedules";
@@ -24,7 +26,10 @@ export function App() {
   const [session, setSession] = useState<Session | null>(() => JSON.parse(localStorage.getItem("sir-session") || "null"));
   const [view, setView] = useState<View>("dashboard");
   const [loading, setLoading] = useState(true);
-  const [message, setMessage] = useState("");
+  // El error de autenticación se muestra dentro del formulario de acceso y es
+  // independiente de las notificaciones transitorias de la aplicación.
+  const [authError, setAuthError] = useState("");
+  const { toasts, push: pushToast, dismiss: dismissToast, clear: clearToasts } = useToasts();
   const accessibleViews = session?.role === "admin" ? views : views.filter(item => item !== "admin");
 
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -55,7 +60,7 @@ export function App() {
   }, [session, view]);
 
   useEffect(() => {
-    loadData().catch(() => setMessage("No se pudo conectar con FastAPI. Verifica que el backend este ejecutandose."));
+    loadData().catch(() => pushToast("No se pudo conectar con FastAPI. Verifica que el backend esté ejecutándose.", "error"));
   }, []);
 
   async function login(nextSession: Session) {
@@ -71,10 +76,10 @@ export function App() {
       localStorage.setItem('sir-session', JSON.stringify(session));
       localStorage.setItem('sir-token', payload.token);
       setSession(session);
-      setMessage('');
+      setAuthError('');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'No se pudo iniciar sesión';
-      setMessage(message);
+      setAuthError(message);
       throw error;
     }
   }
@@ -84,18 +89,26 @@ export function App() {
     localStorage.removeItem('sir-token');
     setSession(null);
     setView('dashboard');
+    // Sin esto, los avisos de la sesión anterior sobrevivían al cierre de
+    // sesión y reaparecían dentro del formulario de acceso.
+    clearToasts();
+    setAuthError('');
   }
 
   async function createReport(report: Omit<Report, "id" | "status">) {
     await request<Report>("/reports", { method: "POST", body: JSON.stringify(report) });
-    setMessage("Reporte registrado. El equipo municipal ya puede revisarlo.");
+    pushToast("Reporte registrado. El equipo municipal ya puede revisarlo.");
     await loadData();
   }
 
   async function resolveReport(id: number) {
-    await request<Report>(`/reports/${id}/resolve`, { method: "PATCH" });
-    setMessage("Incidencia marcada como resuelta.");
-    await loadData();
+    try {
+      await request<Report>(`/reports/${id}/resolve`, { method: "PATCH" });
+      pushToast("Incidencia marcada como resuelta.");
+      await loadData();
+    } catch (error) {
+      pushToast(error instanceof Error ? error.message : "No se pudo resolver la incidencia", "error");
+    }
   }
 
   async function updateOperation(payload: OperationUpdatePayload) {
@@ -104,23 +117,31 @@ export function App() {
       body: JSON.stringify(payload),
     });
     setMonitor(monitorPayload);
-    setMessage("Evento operativo registrado y monitoreo actualizado.");
+    pushToast("Evento operativo registrado y monitoreo actualizado.");
   }
 
   async function createCollection(payload: { truck_id: number; zone_id: number; kg: number }) {
-    await request<any>("/collections", { method: "POST", body: JSON.stringify(payload) });
-    setMessage("Recolección registrada correctamente.");
-    await loadData();
+    try {
+      await request<any>("/collections", { method: "POST", body: JSON.stringify(payload) });
+      pushToast("Recolección registrada correctamente.");
+      await loadData();
+    } catch (error) {
+      pushToast(error instanceof Error ? error.message : "No se pudo registrar la recolección", "error");
+    }
   }
 
   async function confirmCollection(collectionId: number) {
-    await request<any>(`/collections/${collectionId}/confirm`, { method: "POST" });
-    setMessage("Recolección confirmada por ciudadano.");
-    await loadData();
+    try {
+      await request<any>(`/collections/${collectionId}/confirm`, { method: "POST" });
+      pushToast("Recolección confirmada por ciudadano.");
+      await loadData();
+    } catch (error) {
+      pushToast(error instanceof Error ? error.message : "No se pudo confirmar la recolección", "error");
+    }
   }
 
   if (!session) {
-    return <AuthView zones={data.zones} onLogin={login} message={message} />;
+    return <AuthView zones={data.zones} onLogin={login} message={authError} />;
   }
 
   const operationalSignal = getOperationalSignal({ ...data, ...monitor });
@@ -166,12 +187,16 @@ export function App() {
           <div className="app-header-inner">
             <div className="app-header-left">
               <h2>{viewLabels[view]}</h2>
-              <span className={`signal-badge ${operationalSignal.tone}`}>
-                {operationalSignal.tone === "ok" ? <Icon name="check" /> : <Icon name="alert" />}
-                {operationalSignal.label}
-              </span>
             </div>
             <div className="app-header-right">
+              {/* El estado operativo vive aquí, dentro del módulo de notificaciones:
+                  como insignia junto al título repetía el dato que el dashboard ya
+                  muestra en "Alertas Pendientes" y competía con el encabezado. */}
+              <NotificationsMenu
+                notifications={effectiveData.notifications}
+                alerts={monitor.alerts}
+                summary={operationalSignal.label}
+              />
               <button type="button" className="theme-toggle" onClick={() => setIsDarkMode((value: boolean) => !value)} title={isDarkMode ? "Modo claro" : "Modo oscuro"}>
                 {isDarkMode ? <Icon name="sun" /> : <Icon name="moon" />}
               </button>
@@ -180,7 +205,6 @@ export function App() {
         </div>
 
         <div className="app-main">
-          {message && <div role="alert" className="hint success" style={{marginBottom:16}}>{message}</div>}
           {loading ? (
             <div className="loading-screen">
               <div className="spinner"></div>
@@ -202,6 +226,8 @@ export function App() {
           )}
         </div>
       </div>
+
+      <ToastStack toasts={toasts} onDismiss={dismissToast} />
     </main>
   );
 }
@@ -209,7 +235,7 @@ export function App() {
 function Content(props: { data: Bootstrap; monitor: Monitor; session: Session; view: View; onCreateReport: (report: Omit<Report, "id" | "status">) => Promise<void>; onResolveReport: (id: number) => Promise<void>; onOperationUpdate: (payload: OperationUpdatePayload) => Promise<void>; onCreateCollection: (payload: { truck_id: number; zone_id: number; kg: number }) => Promise<void>; onConfirmCollection: (collectionId: number) => Promise<void>; }) {
   const { data, monitor, session, view, onOperationUpdate, onResolveReport, onCreateCollection, onConfirmCollection } = props;
   if (view === "dashboard") return <Dashboard data={data} monitor={monitor} />;
-  if (view === "admin") return <Admin data={data} session={session} onResolveReport={onResolveReport} onOperationUpdate={onOperationUpdate} />;
+  if (view === "admin") return <Admin data={data} onOperationUpdate={onOperationUpdate} />;
   if (view === "schedules") return <Schedules schedules={data.schedules} />;
   if (view === "reports") return <Reports {...props} />;
   if (view === "waste") return <Waste />;

@@ -243,7 +243,38 @@ app.add_middleware(
 memory = MemoryStore()
 
 
-JWT_SECRET = os.getenv("JWT_SECRET", "dev-secret-change-me-change-this-to-a-strong-secret-123456")
+_DEV_JWT_SECRET = "dev-secret-change-me-change-this-to-a-strong-secret-123456"
+
+
+def _resolve_jwt_secret() -> str:
+    """Resuelve la clave de firma JWT.
+
+    El valor por defecto está publicado en el repositorio: si un despliegue lo
+    usara, cualquiera podría firmar tokens de administrador. Por eso solo se
+    admite en desarrollo local, y se considera "desplegado" cuando hay
+    DATABASE_URL o APP_ENV distinto de development.
+    """
+    secret = os.getenv("JWT_SECRET", "").strip()
+    if secret:
+        return secret
+
+    app_env = os.getenv("APP_ENV", "development").strip().lower()
+    is_deployed = bool(os.getenv("DATABASE_URL", "").strip()) or app_env not in ("development", "dev", "local", "test")
+    if is_deployed:
+        raise RuntimeError(
+            "JWT_SECRET no está definido. Define una clave secreta fuerte en las "
+            "variables de entorno antes de desplegar (el valor por defecto es público)."
+        )
+
+    print(
+        "ADVERTENCIA: usando JWT_SECRET de desarrollo. No despliegues sin definir "
+        "la variable de entorno JWT_SECRET.",
+        flush=True,
+    )
+    return _DEV_JWT_SECRET
+
+
+JWT_SECRET = _resolve_jwt_secret()
 JWT_ALGORITHM = "HS256"
 
 

@@ -23,8 +23,8 @@ export function Routes({ data, monitor }: { data: Bootstrap; monitor: Monitor })
       </Panel>
       <Panel icon={<Icon name="truck" />} title="Seguimiento GPS">
         <div className="list">
-          {routes.map(route => <Item key={route.id} title={`${route.truck} - ${route.zone}`} detail={`Avance ${route.progress}% | ETA ${route.eta} | ${route.delay}`} color={route.delay.includes("Retraso") ? "yellow" : "blue"} />)}
-          {alerts.map(alert => <Item key={alert} title="Microservicio TS" detail={alert} color="blue" />)}
+          {routes.map(route => <Item key={route.id} title={`${route.truck} - ${route.zone}`} detail={`Avance ${route.progress}% | ETA ${route.eta} | ${route.delay}`} color={route.delay.includes("Retraso") ? "yellow" : "green"} />)}
+          {alerts.map(alert => <Item key={alert} title="Microservicio TS" detail={alert} color="neutral" />)}
         </div>
       </Panel>
     </div>

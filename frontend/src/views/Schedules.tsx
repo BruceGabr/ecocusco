@@ -1,63 +1,77 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Schedule } from "../types";
 import { Icon } from "../components/Icon";
-import { Panel } from "../components/Panel";
-import { EmptyState } from "../components/EmptyState";
-import Item from "../components/Item";
+import { DataTable, Column } from "../components/DataTable";
+import { Toolbar, FilterSelect } from "../components/Toolbar";
+import { Pagination, paginate } from "../components/Pagination";
+import { formatTimeLabel } from "../components/TimePicker";
+import { toOptions } from "../constants";
 import { exportToCSV } from "../utils/export";
 
+const PAGE_SIZE = 10;
+
 export function Schedules({ schedules }: { schedules: Schedule[] }) {
-  const [search, setSearch] = useState("");
-  const [selectedDay, setSelectedDay] = useState("Todos");
+  const [zoneFilter, setZoneFilter] = useState("");
+  const [dayFilter, setDayFilter] = useState("");
+  const [timeFilter, setTimeFilter] = useState("");
+  const [page, setPage] = useState(1);
 
-  const filtered = useMemo(() => {
-    return schedules.filter(s => {
-      const matchSearch = s.zone.toLowerCase().includes(search.toLowerCase());
-      const matchDay = selectedDay === "Todos" || s.day === selectedDay;
-      return matchSearch && matchDay;
-    });
-  }, [schedules, search, selectedDay]);
+  // Los catálogos salen de los datos: solo se ofrecen valores que existen,
+  // en vez de una búsqueda de texto libre donde se escribía a ciegas.
+  const zoneOptions = useMemo(() => toOptions([...new Set(schedules.map(item => item.zone))]), [schedules]);
+  const dayOptions = useMemo(() => toOptions([...new Set(schedules.map(item => item.day))]), [schedules]);
+  const timeOptions = useMemo(
+    () => [...new Set(schedules.map(item => item.time))].sort().map(time => ({ value: time, label: formatTimeLabel(time) })),
+    [schedules]
+  );
 
-  const days = ["Todos", ...new Set(schedules.map(s => s.day))];
+  const filtered = useMemo(() => schedules.filter(item => {
+    const matchesZone = !zoneFilter || item.zone === zoneFilter;
+    const matchesDay = !dayFilter || item.day === dayFilter;
+    const matchesTime = !timeFilter || item.time === timeFilter;
+    return matchesZone && matchesDay && matchesTime;
+  }), [schedules, zoneFilter, dayFilter, timeFilter]);
+
+  useEffect(() => { setPage(1); }, [zoneFilter, dayFilter, timeFilter]);
+
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const currentPage = Math.min(page, pageCount);
+  const visible = paginate(filtered, currentPage, PAGE_SIZE);
+
+  const columns: Column<Schedule>[] = [
+    { key: "zone", header: "Zona", render: item => <strong>{item.zone}</strong> },
+    { key: "day", header: "Día", render: item => item.day },
+    { key: "time", header: "Horario", render: item => formatTimeLabel(item.time) },
+    { key: "waste", header: "Tipo de residuo", render: item => <span className="badge neutral">{item.waste}</span> },
+  ];
 
   return (
-    <Panel
-      icon={<Icon name="schedules" />}
-      title="Consulta por zona"
-      actions={<button className="action-btn" onClick={() => exportToCSV("horarios", filtered)}><Icon name="download" /> Exportar CSV</button>}
-    >
-      <div className="search-box">
-        <Icon name="search" />
-        <input
-          type="text"
-          placeholder="Buscar zona..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          aria-label="Buscar horarios por zona"
-        />
-      </div>
-
-      <div className="filter-bar">
-        {days.map(day => (
-          <button
-            key={day}
-            className={`filter-btn ${selectedDay === day ? "active" : ""}`}
-            onClick={() => setSelectedDay(day)}
-            aria-pressed={selectedDay === day}
-          >
-            {day}
+    <div className="listing">
+      <Toolbar
+        filters={
+          <>
+            <FilterSelect label="Zona" value={zoneFilter} onChange={setZoneFilter} options={zoneOptions} allLabel="Todas" />
+            <FilterSelect label="Día" value={dayFilter} onChange={setDayFilter} options={dayOptions} allLabel="Todos" />
+            <FilterSelect label="Hora" value={timeFilter} onChange={setTimeFilter} options={timeOptions} allLabel="Todas" />
+          </>
+        }
+        action={
+          <button type="button" className="btn primary" onClick={() => exportToCSV("horarios", filtered)}>
+            <Icon name="download" /> Exportar CSV
           </button>
-        ))}
-      </div>
+        }
+      />
 
-      <div className="list">
-        {filtered.length === 0 ? (
-          <EmptyState message="No hay horarios que coincidan con tu búsqueda" />
-        ) : (
-          filtered.map(item => <Item key={item.id} title={item.zone} detail={`${item.day} | ${item.time} | ${item.waste}`} color="blue" />)
-        )}
-      </div>
-    </Panel>
+      <DataTable
+        columns={columns}
+        rows={visible}
+        rowKey={item => item.id}
+        caption="Horarios de recolección por zona"
+        emptyMessage="No hay horarios que coincidan con el filtro"
+      />
+
+      <Pagination page={currentPage} pageCount={pageCount} total={filtered.length} onChange={setPage} />
+    </div>
   );
 }
 

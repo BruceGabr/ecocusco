@@ -1,0 +1,11 @@
+# Dependencias solo de desarrollo/pruebas.
+# Se mantienen fuera de requirements.txt para no instalarlas en producción
+# (Render/Railway instalan requirements.txt en el despliegue).
+#
+# Uso:
+#   .\.venv\Scripts\python.exe -m pip install -r backend-python\requirements-dev.txt
+#   .\.venv\Scripts\python.exe -m pytest -q
+
+-r requirements.txt
+
+pytest>=8.0.0

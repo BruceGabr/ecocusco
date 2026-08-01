@@ -13,9 +13,6 @@ export default defineConfig({
       }
     }
   },
-  test: {
-    environment: "jsdom",
-    globals: true,
-    setupFiles: "./src/vitest.setup.ts"
-  }
+  // La configuración de pruebas vive en vitest.config.ts, que tiene precedencia
+  // sobre este archivo. Duplicarla aquí crearía config muerta y divergente.
 });

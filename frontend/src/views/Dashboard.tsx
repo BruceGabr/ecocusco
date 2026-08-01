@@ -85,7 +85,7 @@ export function Dashboard({ data, monitor }: { data: Bootstrap; monitor: Monitor
                 <div style={{fontSize:13,color:'var(--muted)'}}>{step.action} · {step.truck}</div>
                 <div className="dispatch-progress">
                   <div className="progress-bar"><div className="progress-bar-fill" style={{width: step.status === 'Completado' ? '100%' : step.status === 'En curso' ? '50%' : '10%'}}></div></div>
-                  <span style={{color: step.status === 'Completado' ? 'var(--success)' : step.status === 'En curso' ? 'var(--mustard-500)' : 'var(--muted-light)', fontWeight:600, fontSize:11}}>{step.status}</span>
+                  <span className="dispatch-status" style={{color: step.status === 'Completado' ? 'var(--state-success)' : step.status === 'En curso' ? 'var(--state-pending)' : 'var(--muted-light)'}}>{step.status}</span>
                 </div>
               </div>
             ))}

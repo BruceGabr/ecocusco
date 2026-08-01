@@ -5,13 +5,25 @@ services:
     rootDir: backend-python
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
     envVars:
+      - key: APP_ENV
+        value: production
+      # Dominio exacto del frontend en Vercel. Debe definirse en el panel de
+      # Render con la URL real; el valor anterior apuntaba a localhost, que en
+      # produccion no autoriza a nadie.
       - key: CORS_ORIGINS
-        value: http://localhost:5173,http://127.0.0.1:5173
-      - key: CORS_ORIGIN_REGEX
-        value: https://.*\.vercel\.app
-      - key: JWT_SECRET
         sync: false
+      # Acotado al proyecto: el patron anterior (https://.*\.vercel\.app) admitia
+      # CUALQUIER despliegue de Vercel y, como la API usa allow_credentials=True,
+      # eso permitia a un sitio de terceros llamarla con las credenciales del usuario.
+      # Ajusta el slug si el proyecto en Vercel se llama distinto.
+      - key: CORS_ORIGIN_REGEX
+        value: ^https://ecocusco(-[a-z0-9-]+)?\.vercel\.app$
+      # Generada por Render: evita que el despliegue arranque con la clave de
+      # desarrollo, que es publica porque esta en el repositorio.
+      - key: JWT_SECRET
+        generateValue: true
 
   - type: web
     name: sir-cusco-geo
@@ -19,3 +31,4 @@ services:
     rootDir: backend-typescript
     buildCommand: npm install && npm run build
     startCommand: npm start
+    healthCheckPath: /health

@@ -1,6 +1,7 @@
-import React, { FormEvent, useState } from "react";
+import React, { FormEvent, useEffect, useMemo, useState } from "react";
 import { OperationUpdatePayload, Route } from "../../types";
 import { Panel } from "../Panel";
+import { Select } from "../Select";
 
 type Container = { id: number; zone_id: number; name: string; fill_level: number; status: string; updated_at: string };
 
@@ -12,9 +13,30 @@ export function EventsPanel({ routes, containers, onOperationUpdate }: { routes:
   const [eventFillLevel, setEventFillLevel] = useState("");
   const [eventStatus, setEventStatus] = useState("");
   const [eventNote, setEventNote] = useState("");
+  const [feedback, setFeedback] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const targets = useMemo(
+    () => (eventType === "route_update" ? routes ?? [] : containers ?? []),
+    [eventType, routes, containers]
+  );
+
+  // El objetivo debe pertenecer siempre a la lista del tipo activo: al cambiar
+  // de ruta a contenedor (o al cargar los datos) el id anterior deja de ser
+  // válido y se enviaría un evento contra un objetivo inexistente.
+  useEffect(() => {
+    if (!targets.length) return;
+    if (!targets.some(target => target.id === eventTargetId)) {
+      setEventTargetId(targets[0].id);
+    }
+  }, [targets, eventTargetId]);
 
   async function submitEventUpdate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!targets.length) {
+      setFeedback("No hay objetivos disponibles para este tipo de evento.");
+      return;
+    }
     const payload: OperationUpdatePayload = {
       type: eventType,
       id: eventTargetId,
@@ -29,27 +51,43 @@ export function EventsPanel({ routes, containers, onOperationUpdate }: { routes:
       if (eventStatus.trim()) payload.status = eventStatus;
     }
 
-    await onOperationUpdate(payload);
-    setEventProgress("");
-    setEventDelay("");
-    setEventFillLevel("");
-    setEventStatus("");
-    setEventNote("");
+    setSubmitting(true);
+    setFeedback("");
+    try {
+      await onOperationUpdate(payload);
+      setEventProgress("");
+      setEventDelay("");
+      setEventFillLevel("");
+      setEventStatus("");
+      setEventNote("");
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : "No se pudo registrar el evento operativo");
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
     <Panel title="Eventos operativos">
-      <p>Envía actualizaciones de ruta y contenedor desde el panel administrativo.</p>
       <form className="form-grid" onSubmit={submitEventUpdate}>
-        <label htmlFor="event-type">Tipo de evento<select id="event-type" value={eventType} onChange={event => setEventType(event.currentTarget.value as "route_update" | "container_update")}>
-          <option value="route_update">Actualización de ruta</option>
-          <option value="container_update">Actualización de contenedor</option>
-        </select></label>
-        <label htmlFor="event-target">Objetivo<select id="event-target" value={eventTargetId} onChange={event => setEventTargetId(Number(event.currentTarget.value))}>
-          {eventType === "route_update"
-            ? routes?.map((route, index) => <option key={`route-${route.id}-${index}`} value={route.id}>{`Ruta ${route.truck} - ${route.zone}`}</option>)
-            : containers?.map((container, index) => <option key={`container-${container.id}-${index}`} value={container.id}>{`${container.name} (${container.fill_level}%)`}</option>)}
-        </select></label>
+        <label htmlFor="event-type">Tipo de evento<Select
+          id="event-type"
+          value={eventType}
+          onChange={value => setEventType(value as "route_update" | "container_update")}
+          options={[
+            { value: "route_update", label: "Actualización de ruta" },
+            { value: "container_update", label: "Actualización de contenedor" },
+          ]}
+        /></label>
+        <label htmlFor="event-target">Objetivo<Select
+          id="event-target"
+          value={String(eventTargetId)}
+          onChange={value => setEventTargetId(Number(value))}
+          options={eventType === "route_update"
+            ? (routes ?? []).map(route => ({ value: String(route.id), label: `Ruta ${route.truck} - ${route.zone}` }))
+            : (containers ?? []).map(container => ({ value: String(container.id), label: `${container.name} (${container.fill_level}%)` }))}
+          placeholder="Selecciona un objetivo"
+        /></label>
         {eventType === "route_update" ? (
           <>
             <label htmlFor="event-progress">Progreso<input id="event-progress" name="progress" value={eventProgress} onChange={event => setEventProgress(event.currentTarget.value)} placeholder="Ej. 92" /></label>
@@ -62,8 +100,9 @@ export function EventsPanel({ routes, containers, onOperationUpdate }: { routes:
           </>
         )}
         <label htmlFor="event-note" className="wide">Nota<textarea id="event-note" value={eventNote} onChange={event => setEventNote(event.currentTarget.value)} placeholder="Detalle de la acción..." /></label>
-        <button type="submit">Enviar evento</button>
+        <button type="submit" disabled={submitting}>{submitting ? "Enviando..." : "Enviar evento"}</button>
       </form>
+      {feedback && <p className="hint error" role="alert">{feedback}</p>}
     </Panel>
   );
 }

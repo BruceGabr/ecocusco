@@ -17,7 +17,7 @@ export function Waste() {
           <div className={`waste-icon ${w.color}`}><Icon name={w.icon} /></div>
           <h3>{w.name}</h3>
           <p>{w.desc}</p>
-          <span className="bin-label" style={{background:'var(--green-100)',color:'var(--green-600)'}}>{w.bin}</span>
+          <span className="bin-label">Contenedor {w.bin}</span>
         </div>
       ))}
     </div>

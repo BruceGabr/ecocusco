@@ -1,99 +1,195 @@
-import React, { FormEvent, useEffect, useState } from "react";
-import { Role, Session } from "../../types";
+import React, { FormEvent, useEffect, useMemo, useState } from "react";
+import { Role, Session, Zone } from "../../types";
 import { request } from "../../api";
 import { Panel } from "../Panel";
 import { Button } from "../Button";
-import { AdminListRow } from "./AdminListRow";
+import { Icon } from "../Icon";
+import { Modal } from "../Modal";
+import { DataTable, Column } from "../DataTable";
+import { Toolbar, FilterSelect } from "../Toolbar";
+import { Pagination, paginate } from "../Pagination";
+import { Select } from "../Select";
+import { collectErrors, errorProps, FieldErrors } from "../../utils/validation";
 
-export function UserPanel({ users: initialUsers }: { users: Session[] }) {
+const PAGE_SIZE = 8;
+const ROLES: Role[] = ["ciudadano", "operador", "admin", "conductor"];
+const ROLE_LABELS: Record<Role, string> = {
+  ciudadano: "Ciudadano",
+  operador: "Operador",
+  admin: "Administrador",
+  conductor: "Conductor",
+};
+const ROLE_OPTIONS = ROLES.map(role => ({ value: role, label: ROLE_LABELS[role] }));
+
+type UserForm = { name: string; email: string; password: string; role: Role; zone: string };
+const EMPTY_FORM: UserForm = { name: "", email: "", password: "", role: "ciudadano", zone: "" };
+
+export function UserPanel({ users: initialUsers, zones = [] }: { users: Session[]; zones?: Zone[] }) {
   const [users, setUsers] = useState<Session[]>(initialUsers);
-  const [userRoleDrafts, setUserRoleDrafts] = useState<Record<number, Role>>({});
-  const [savingUserIds, setSavingUserIds] = useState<number[]>([]);
   const [feedback, setFeedback] = useState("");
-  const [formValues, setFormValues] = useState({ name: "", email: "", password: "", role: "ciudadano" as Role, zone: "Centro Historico" });
+  const [isError, setIsError] = useState(false);
+  const [errors, setErrors] = useState<FieldErrors>({});
+  const [page, setPage] = useState(1);
+
+  const [roleFilter, setRoleFilter] = useState("");
+  const [zoneFilter, setZoneFilter] = useState("");
+
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [form, setForm] = useState<UserForm>(EMPTY_FORM);
 
   useEffect(() => {
     setUsers(initialUsers ?? []);
   }, [initialUsers]);
 
-  async function updateUserRole(user: Session) {
+  const zoneOptions = useMemo(() => zones.map(zone => ({ value: zone.name, label: zone.name })), [zones]);
+
+  const filtered = useMemo(() => users.filter(user => {
+    const matchesRole = !roleFilter || user.role === roleFilter;
+    const matchesZone = !zoneFilter || user.zone === zoneFilter;
+    return matchesRole && matchesZone;
+  }), [users, roleFilter, zoneFilter]);
+
+  useEffect(() => { setPage(1); }, [roleFilter, zoneFilter]);
+
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const currentPage = Math.min(page, pageCount);
+  const visible = paginate(filtered, currentPage, PAGE_SIZE);
+
+  function report(message: string, error = false) {
+    setFeedback(message);
+    setIsError(error);
+  }
+
+  function openCreate() {
+    setEditingId(null);
+    setForm({ ...EMPTY_FORM, zone: zones[0]?.name ?? "" });
+    setErrors({});
+    setModalOpen(true);
+  }
+
+  function openEdit(user: Session) {
     if (!user.id) return;
-    const nextRole = userRoleDrafts[user.id] ?? user.role;
-    setSavingUserIds(prev => prev.includes(user.id!) ? prev : [...prev, user.id!]);
+    setEditingId(user.id);
+    // La contraseña no se edita desde aquí: el backend no la expone y
+    // reenviarla vacía la sobrescribiría.
+    setForm({ name: user.name, email: user.email, password: "", role: user.role, zone: user.zone ?? "" });
+    setErrors({});
+    setModalOpen(true);
+  }
+
+  async function submitForm(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const found = collectErrors(event.currentTarget);
+    if (Object.keys(found).length > 0) { setErrors(found); return; }
+    setErrors({});
     try {
-      const updated = await request<Session>(`/users/${user.id}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ role: nextRole })
-      });
-      setUsers(prev => prev.map(item => item.id === user.id ? { ...item, role: updated.role ?? nextRole } : item));
-      setFeedback(`Rol actualizado para ${user.name}`);
+      if (editingId === null) {
+        const created = await request<Session>('/users', {
+          method: 'POST',
+          body: JSON.stringify({ name: form.name, email: form.email, password: form.password, role: form.role, zone: form.zone }),
+        });
+        if (created) setUsers(prev => [...prev, { ...created, email: form.email, role: form.role, zone: form.zone }]);
+        report(`Usuario creado: ${form.name}`);
+      } else {
+        const updated = await request<Session>(`/users/${editingId}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ name: form.name, email: form.email, role: form.role, zone: form.zone }),
+        });
+        setUsers(prev => prev.map(user => user.id === editingId ? { ...user, ...updated, name: form.name, email: form.email, role: form.role, zone: form.zone } : user));
+        report(`Usuario actualizado: ${form.name}`);
+      }
+      setModalOpen(false);
+      setEditingId(null);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'No se pudo actualizar el usuario';
-      setFeedback(message);
-    } finally {
-      setSavingUserIds(prev => prev.filter(id => id !== user.id));
+      report(error instanceof Error ? error.message : 'No se pudo guardar el usuario', true);
     }
   }
 
-  async function createUser(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function deleteUser(user: Session) {
+    if (!user.id) return;
     try {
-      const created = await request<Session>('/users', {
-        method: 'POST',
-        body: JSON.stringify({
-          name: formValues.name,
-          email: formValues.email,
-          password: formValues.password,
-          role: formValues.role,
-          zone: formValues.zone,
-        })
-      });
-      if (created) {
-        setUsers(prev => [...prev, { ...created, email: formValues.email, role: formValues.role, zone: formValues.zone }]);
-      }
-      setFeedback(`Usuario creado: ${formValues.name}`);
-      setFormValues({ name: "", email: "", password: "", role: "ciudadano", zone: "Centro Historico" });
-      (event.currentTarget as HTMLFormElement).reset();
+      await request(`/users/${user.id}`, { method: 'DELETE' });
+      setUsers(prev => prev.filter(item => item.id !== user.id));
+      report('Usuario eliminado');
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'No se pudo crear el usuario';
-      setFeedback(message);
+      report(error instanceof Error ? error.message : 'No se pudo eliminar el usuario', true);
     }
   }
+
+  const columns: Column<Session>[] = [
+    {
+      key: "user",
+      header: "Usuario",
+      render: user => (
+        <>
+          <strong>{user.name}</strong>
+          <div style={{ color: "var(--muted)", fontSize: 12 }}>{user.email}</div>
+        </>
+      ),
+    },
+    { key: "zone", header: "Zona", render: user => user.zone ?? "—" },
+    { key: "role", header: "Rol", render: user => <span className="badge neutral">{ROLE_LABELS[user.role] ?? user.role}</span> },
+    {
+      key: "actions",
+      header: "",
+      align: "right",
+      render: user => (
+        <div className="table-actions">
+          <Button size="sm" disabled={!user.id} onClick={() => openEdit(user)}><Icon name="edit" size={15} /> Editar usuario</Button>
+          <Button size="sm" variant="danger" disabled={!user.id} onClick={() => deleteUser(user)}><Icon name="trash" size={15} /> Eliminar usuario</Button>
+        </div>
+      ),
+    },
+  ];
 
   return (
     <Panel title="Gestión de usuarios">
-      <p>Administra roles, accesos y usuarios del sistema.</p>
-      <form className="form-grid" onSubmit={createUser}>
-        <label htmlFor="admin-user-name">Nombre<input id="admin-user-name" required value={formValues.name} onChange={event => setFormValues(prev => ({ ...prev, name: event.currentTarget.value }))} /></label>
-        <label htmlFor="admin-user-email">Correo<input id="admin-user-email" required type="email" value={formValues.email} onChange={event => setFormValues(prev => ({ ...prev, email: event.currentTarget.value }))} /></label>
-        <label htmlFor="admin-user-password">Contraseña<input id="admin-user-password" required type="password" minLength={8} value={formValues.password} onChange={event => setFormValues(prev => ({ ...prev, password: event.currentTarget.value }))} /></label>
-        <label htmlFor="admin-user-role">Rol<select id="admin-user-role" value={formValues.role} onChange={event => setFormValues(prev => ({ ...prev, role: event.currentTarget.value as Role }))}>
-          <option value="ciudadano">Ciudadano</option>
-          <option value="operador">Operador</option>
-          <option value="admin">Administrador</option>
-          <option value="conductor">Conductor</option>
-        </select></label>
-        <label htmlFor="admin-user-zone">Zona<input id="admin-user-zone" value={formValues.zone} onChange={event => setFormValues(prev => ({ ...prev, zone: event.currentTarget.value }))} /></label>
-        <button type="submit">Crear usuario</button>
-      </form>
-      {feedback && <p className="hint success" aria-live="polite">{feedback}</p>}
-      <ul className="list" aria-label="Lista de usuarios">
-        {users.map((user, index) => (
-          <AdminListRow key={`user-${user.id ?? user.email}-${index}`}>
-            <div>
-              <strong>{user.name}</strong>
-              <div style={{ color: "var(--muted)", fontSize: "0.95rem" }}>{user.email} · {user.zone}</div>
-            </div>
-            <select className="inline-select" value={userRoleDrafts[user.id ?? 0] ?? user.role} onChange={event => setUserRoleDrafts(prev => ({ ...prev, [user.id ?? 0]: event.currentTarget.value as Role }))} aria-label={`Rol de ${user.name}`}>
-              <option value="ciudadano">Ciudadano</option>
-              <option value="operador">Operador</option>
-              <option value="admin">Administrador</option>
-              <option value="conductor">Conductor</option>
-            </select>
-            <Button size="sm" onClick={() => updateUserRole(user)} disabled={!user.id || savingUserIds.includes(user.id)}>{savingUserIds.includes(user.id ?? -1) ? "Guardando..." : "Guardar rol"}</Button>
-          </AdminListRow>
-        ))}
-      </ul>
+      <Toolbar
+        filters={
+          <>
+            <FilterSelect label="Rol" value={roleFilter} onChange={setRoleFilter} options={ROLE_OPTIONS} allLabel="Todos" />
+            <FilterSelect label="Zona" value={zoneFilter} onChange={setZoneFilter} options={zoneOptions} allLabel="Todas" />
+          </>
+        }
+        action={<button type="button" className="btn primary" onClick={openCreate}>Crear usuario</button>}
+      />
+
+      {feedback && <p className={`hint ${isError ? "error" : "success"}`} aria-live="polite">{feedback}</p>}
+
+      <DataTable
+        columns={columns}
+        rows={visible}
+        rowKey={(user, index) => `user-${user.id ?? user.email}-${index}`}
+        caption="Lista de usuarios"
+        emptyMessage="No hay usuarios que coincidan con el filtro"
+      />
+      <Pagination page={currentPage} pageCount={pageCount} total={filtered.length} onChange={setPage} />
+
+      <Modal open={modalOpen} title={editingId === null ? "Nuevo usuario" : "Editar usuario"} onClose={() => setModalOpen(false)}>
+        <form className="form-grid" onSubmit={submitForm} noValidate>
+          <label htmlFor="admin-user-name">Nombre
+            <input id="admin-user-name" required value={form.name} onChange={event => setForm(prev => ({ ...prev, name: event.currentTarget.value }))} {...errorProps("admin-user-name", errors)} />
+            {errors["admin-user-name"] && <span className="field-error" id="admin-user-name-error">{errors["admin-user-name"]}</span>}
+          </label>
+          <label htmlFor="admin-user-email">Correo
+            <input id="admin-user-email" required type="email" value={form.email} onChange={event => setForm(prev => ({ ...prev, email: event.currentTarget.value }))} {...errorProps("admin-user-email", errors)} />
+            {errors["admin-user-email"] && <span className="field-error" id="admin-user-email-error">{errors["admin-user-email"]}</span>}
+          </label>
+          {editingId === null && (
+            <label htmlFor="admin-user-password">Contraseña
+              <input id="admin-user-password" required type="password" minLength={8} value={form.password} onChange={event => setForm(prev => ({ ...prev, password: event.currentTarget.value }))} {...errorProps("admin-user-password", errors)} />
+              {errors["admin-user-password"] && <span className="field-error" id="admin-user-password-error">{errors["admin-user-password"]}</span>}
+            </label>
+          )}
+          <label htmlFor="admin-user-role">Rol<Select id="admin-user-role" value={form.role} onChange={value => setForm(prev => ({ ...prev, role: value as Role }))} options={ROLE_OPTIONS} /></label>
+          <label htmlFor="admin-user-zone">Zona<Select id="admin-user-zone" value={form.zone} onChange={value => setForm(prev => ({ ...prev, zone: value }))} options={zoneOptions} placeholder="Selecciona una zona" /></label>
+          <div className="form-actions">
+            <Button onClick={() => setModalOpen(false)}>Cancelar</Button>
+            <button type="submit" className="btn primary">{editingId === null ? "Crear usuario" : "Guardar cambios"}</button>
+          </div>
+        </form>
+      </Modal>
     </Panel>
   );
 }

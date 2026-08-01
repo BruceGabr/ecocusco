@@ -174,7 +174,7 @@ def test_get_schedules_filter_by_zone():
     client = TestClient(app)
     response = client.get("/api/schedules")
     schedules = response.json()
-    centro = [s for s in schedules if s.get("zone_name") == "Centro Historico" or s.get("zone_id") == 1]
+    centro = [s for s in schedules if s.get("zone_name") == "Cusco" or s.get("zone_id") == 1]
     assert len(centro) > 0
 ```
 
@@ -190,7 +190,7 @@ def test_get_schedules_filter_by_zone():
 | 6 | `test_register_missing_fields` | Registro con campos obligatorios faltantes | `name: No Password, email: nopass@test.pe` (sin password) | HTTP 422 (error de validacion) | Passed |
 | 7 | `test_get_schedules_returns_list` | Consultar lista de horarios | GET `/api/schedules` | HTTP 200, lista no vacia de horarios | Passed |
 | 8 | `test_get_schedules_structure` | Verificar estructura de datos de horarios | GET `/api/schedules` | Cada horario tiene: id, zone_id, day, time, waste | Passed |
-| 9 | `test_get_schedules_filter_by_zone` | Filtrar horarios por zona | GET `/api/schedules` | La zona "Centro Historico" tiene horarios asignados | Passed |
+| 9 | `test_get_schedules_filter_by_zone` | Filtrar horarios por zona | GET `/api/schedules` | La zona "Cusco" tiene horarios asignados | Passed |
 
 ### 4.4 Ejecucion de pruebas
 
@@ -274,7 +274,7 @@ Ademas de los 3 casos base solicitados (login, registro, horarios), se agregaron
 | `test_login_invalid_email_format` | Verifica que el endpoint rechace emails con formato incorrecto devolviendo HTTP 422 |
 | `test_register_missing_fields` | Verifica que el endpoint rechace registros sin campos obligatorios devolviendo HTTP 422 |
 | `test_get_schedules_structure` | Verifica que cada horario tenga la estructura de datos correcta (id, zone_id, day, time, waste) |
-| `test_get_schedules_filter_by_zone` | Verifica que la zona "Centro Historico" tenga horarios asignados en el sistema |
+| `test_get_schedules_filter_by_zone` | Verifica que la zona "Cusco" tenga horarios asignados en el sistema |
 
 Estas pruebas adicionales demuestran una cobertura mas completa de los escenarios de uso del sistema.
 

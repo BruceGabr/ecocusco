@@ -30,6 +30,17 @@ const monitorMock = {
   notifications: [],
 };
 
+/** Los desplegables son el componente Select propio: se abre la lista y se elige opción. */
+function chooseOption(label: RegExp | string, optionName: RegExp | string) {
+  fireEvent.click(screen.getByLabelText(label));
+  fireEvent.click(screen.getByRole("option", { name: optionName }));
+}
+
+function chooseFirstOption(label: RegExp | string) {
+  fireEvent.click(screen.getByLabelText(label));
+  fireEvent.click(screen.getAllByRole("option")[0]);
+}
+
 describe("Operations component", () => {
   it("renders event form and sends payload on submit", async () => {
     const mockUpdate = vi.fn(async () => Promise.resolve());
@@ -39,8 +50,8 @@ describe("Operations component", () => {
     expect(screen.getByRole("heading", { name: /Eventos operativos/i })).toBeInTheDocument();
     expect(screen.getByLabelText(/Tipo de evento/i)).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText(/Tipo de evento/i), { target: { value: "container_update" } });
-    fireEvent.change(screen.getByLabelText(/Objetivo/i), { target: { value: "1" } });
+    chooseOption(/Tipo de evento/i, /Actualización de contenedor/i);
+    chooseFirstOption(/Objetivo/i);
     fireEvent.change(screen.getByLabelText(/Llenado/i), { target: { value: "95" } });
     fireEvent.change(screen.getByLabelText(/Estado/i), { target: { value: "Lleno" } });
 
@@ -58,10 +69,10 @@ describe("Operations component", () => {
     expect(screen.getByRole("heading", { name: /Eventos operativos/i })).toBeInTheDocument();
     expect(screen.getByLabelText(/Tipo de evento/i)).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText(/Tipo de evento/i), { target: { value: "route_update" } });
-    const targetSelect = screen.getByLabelText(/Objetivo/i) as HTMLSelectElement;
-    fireEvent.change(targetSelect, { target: { value: "1" } });
-    expect(targetSelect.value).toBe("1");
+    chooseOption(/Tipo de evento/i, /Actualización de ruta/i);
+    chooseFirstOption(/Objetivo/i);
+    // El disparador del combobox muestra la etiqueta de la opción elegida.
+    expect(screen.getByLabelText(/Objetivo/i)).toHaveTextContent(/Ruta C-01 - Centro Historico/i);
     fireEvent.change(screen.getByLabelText(/Progreso/i), { target: { value: "72" } });
     fireEvent.change(screen.getByLabelText(/Retraso/i), { target: { value: "Retraso leve" } });
 

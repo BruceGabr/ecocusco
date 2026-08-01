@@ -75,7 +75,7 @@ export function Analytics({ data, session, onConfirmCollection }: { data: Bootst
             <article className="item" key={item.id}>
               <div className="item-row">
                 <strong>{`${item.date} - ${item.zone}`}</strong>
-                <span className={`tag ${item.status === "Confirmada" ? "blue" : "yellow"}`}>{item.status}</span>
+                <span className={`tag ${item.status === "Confirmada" ? "green" : "yellow"}`}>{item.status}</span>
               </div>
               <span>{`${item.truck} · ${item.kg} kg`}</span>
               {session && session.role === "ciudadano" && !String(item.status).toLowerCase().includes("confirmada") && onConfirmCollection && (
