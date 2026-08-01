@@ -50,7 +50,7 @@ insert into containers (id, zone_id, name, fill_level, status, updated_at) value
 on conflict (id) do update set zone_id = excluded.zone_id, name = excluded.name, fill_level = excluded.fill_level, status = excluded.status, updated_at = excluded.updated_at;
 
 insert into users (id, name, email, role, zone, password_hash) values
-  (1, 'Administrador EcoCusco', 'admin@ecocusco.pe', 'admin', 'Centro Historico', '$2b$12$8bI9mP5xQK4zbln0L7hmuO4kx2Q2dM2s1nS0H3x9qYdY/7eUVp7oG')
+  (1, 'Administrador EcoCusco', 'admin@ecocusco.pe', 'admin', 'Centro Historico', '$2b$12$jA8D03IBodpaRG75hEmOveGUTXr71WytiRZ82HsvSK94RXYLFxDuS')
 on conflict (id) do update set name = excluded.name, email = excluded.email, role = excluded.role, zone = excluded.zone, password_hash = excluded.password_hash;
 
 insert into notifications (id, user_id, title, message, type, is_read, created_at) values

@@ -6,6 +6,16 @@ create table if not exists zones (
   criticality varchar(40) not null default 'Media'
 );
 
+create table if not exists users (
+  id bigserial primary key,
+  name varchar(120) not null,
+  email varchar(160) not null unique,
+  role varchar(40) not null,
+  zone varchar(120) not null,
+  password_hash varchar(255) not null,
+  created_at timestamp not null default now()
+);
+
 create table if not exists schedules (
   id bigserial primary key,
   zone_id bigint not null references zones(id),
@@ -51,17 +61,8 @@ create table if not exists collections (
   truck_id bigint not null references trucks(id),
   kg integer not null,
   status varchar(60) not null,
-  date date not null
-);
-
-create table if not exists users (
-  id bigserial primary key,
-  name varchar(120) not null,
-  email varchar(160) not null unique,
-  role varchar(40) not null,
-  zone varchar(120) not null,
-  password_hash varchar(255) not null,
-  created_at timestamp not null default now()
+  date date not null,
+  created_by bigint references users(id)
 );
 
 create table if not exists password_reset_tokens (
