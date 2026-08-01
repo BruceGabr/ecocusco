@@ -1,7 +1,7 @@
 services:
   - type: web
     name: sir-cusco-api
-    runtime: python-3.11
+    runtime: python
     rootDir: backend-python
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
@@ -27,7 +27,7 @@ services:
 
   - type: web
     name: sir-cusco-geo
-    runtime: node-20
+    runtime: node
     rootDir: backend-typescript
     buildCommand: npm install && npm run build
     startCommand: npm start
