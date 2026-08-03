@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from datetime import date, datetime, timedelta, timezone
+from enum import Enum
 from typing import Any, Optional
 
 try:
@@ -16,6 +17,47 @@ import jwt
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
+
+
+class Role(str, Enum):
+    """Roles del sistema.
+
+    Antes los cuatro nombres estaban repetidos como cadenas sueltas en una
+    decena de sitios (`{"operador", "admin"}`, `"ciudadano"`, ...), así que un
+    typo en cualquiera de ellos abría o cerraba permisos en silencio.
+    """
+
+    CIUDADANO = "ciudadano"
+    OPERADOR = "operador"
+    ADMIN = "admin"
+    CONDUCTOR = "conductor"
+
+
+#: Rol asignado a quien se registra por el formulario público.
+PUBLIC_REGISTRATION_ROLE = Role.CIUDADANO.value
+
+#: Quiénes pueden gestionar la operación (resolver reportes, registrar eventos).
+OPERATIONAL_ROLES = {Role.OPERADOR.value, Role.ADMIN.value}
+
+#: Quiénes administran catálogos y usuarios.
+ADMIN_ROLES = {Role.ADMIN.value}
+
+# Estados del dominio. Estaban escritos a mano en cada comparación, así que un
+# cambio de texto en un sitio dejaba de coincidir con el resto en silencio.
+TRUCK_STATUS_ON_ROUTE = "En ruta"
+REPORT_STATUS_PENDING = "Pendiente"
+REPORT_STATUS_RESOLVED = "Resuelto"
+COLLECTION_STATUS_CONFIRMED = "Confirmada"
+COLLECTION_STATUS_CONFIRMED_BY_CITIZEN = "Confirmada por ciudadano"
+CONTAINER_STATUS_OK = "Operativo"
+CONTAINER_STATUS_FULL = "Lleno"
+
+# Umbrales operativos. Estaban como números sueltos dentro de la lógica de
+# alertas, así que ajustar cuándo avisar obligaba a buscarlos por el archivo.
+CONTAINER_FILL_CRITICAL = 85
+CONTAINER_FILL_WARNING = 70
+CONTAINER_FILL_CONSIDERED_FULL = 90
+ROUTE_PROGRESS_LOW = 40
 
 
 class LoginRequest(BaseModel):
@@ -41,7 +83,7 @@ class RegisterRequest(BaseModel):
     name: str = Field(min_length=2, max_length=120)
     email: EmailStr
     password: str = Field(min_length=8, max_length=120)
-    role: str = Field(default="ciudadano")
+    role: str = Field(default=PUBLIC_REGISTRATION_ROLE)
     zone: str = Field(default="Centro Historico", min_length=2, max_length=80)
 
 
@@ -201,7 +243,7 @@ class MemoryStore:
                 "id": 1,
                 "name": "Administrador EcoCusco",
                 "email": "admin@ecocusco.pe",
-                "role": "admin",
+                "role": Role.ADMIN.value,
                 "zone": "Centro Historico",
                 "password_hash": hash_password("admin123"),
                 "created_at": datetime.now(timezone.utc).isoformat(),
@@ -210,14 +252,15 @@ class MemoryStore:
         self.password_resets: dict[str, dict[str, Any]] = {}
 
     def analytics(self) -> dict[str, Any]:
-        return {
-            "zones": len(self.zones),
-            "active_trucks": len([truck for truck in self.trucks if truck["status"] == "En ruta"]),
-            "open_reports": len([report for report in self.reports if report["status"] != "Resuelto"]),
-            "confirmed_collections": len([collection for collection in self.collections if collection["status"] == "Confirmada"]),
-            "total_kg": sum(collection["kg"] for collection in self.collections),
-            "compliance": 87,
-        }
+        # Delega en la misma función que usa el modo PostgreSQL: antes había dos
+        # copias del cálculo que podían divergir (y ambas devolvían el 87 fijo).
+        return build_analytics(
+            zones=self.zones,
+            trucks=self.trucks,
+            reports=self.reports,
+            collections=self.collections,
+            routes=self.routes,
+        )
 
 
 def cors_origins() -> list[str]:
@@ -370,23 +413,58 @@ def normalize_dates(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return rows
 
 
-def analytics_from(rows: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
-    collections = rows["collections"]
-    reports = rows["reports"]
-    trucks = rows["trucks"]
+def calculate_compliance(routes: list[dict[str, Any]]) -> int:
+    """Cumplimiento de rutas, en porcentaje.
+
+    Se define como la proporción de rutas que avanzan sin retraso. Antes este
+    valor estaba escrito a mano como `87` en los dos sitios que lo devolvían,
+    así que el indicador "Cumplimiento de rutas" del PDF (Módulo 6) mostraba un
+    número inventado que nunca cambiaba.
+
+    Limitación conocida: la medida correcta sería *rutas completadas / rutas
+    programadas* en un periodo, pero la tabla `routes` todavía no guarda fecha
+    ni estado. Queda pendiente en la Fase 5 del plan (docs/AUDITORIA-Y-PLAN.md).
+    """
+    if not routes:
+        return 0
+    on_time = len([route for route in routes if not route_is_delayed(route)])
+    return round(on_time / len(routes) * 100)
+
+
+def build_analytics(
+    zones: list[dict[str, Any]],
+    trucks: list[dict[str, Any]],
+    reports: list[dict[str, Any]],
+    collections: list[dict[str, Any]],
+    routes: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Resumen para el panel de analítica. Única definición de estas métricas."""
     return {
-        "zones": len(rows["zones"]),
-        "active_trucks": len([truck for truck in trucks if truck["status"] == "En ruta"]),
-        "open_reports": len([report for report in reports if report["status"] != "Resuelto"]),
-        "confirmed_collections": len([collection for collection in collections if collection["status"] == "Confirmada"]),
-        "total_kg": sum(collection["kg"] for collection in collections),
-        "compliance": 87,
+        "zones": len(zones),
+        "active_trucks": len([truck for truck in trucks if truck.get("status") == TRUCK_STATUS_ON_ROUTE]),
+        "open_reports": len([report for report in reports if report.get("status") != REPORT_STATUS_RESOLVED]),
+        "confirmed_collections": len(
+            [item for item in collections if item.get("status") == COLLECTION_STATUS_CONFIRMED]
+        ),
+        "total_kg": sum(item.get("kg", 0) for item in collections),
+        "compliance": calculate_compliance(routes),
     }
 
 
+def analytics_from(rows: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
+    return build_analytics(
+        zones=rows["zones"],
+        trucks=rows["trucks"],
+        reports=rows["reports"],
+        collections=rows["collections"],
+        routes=rows.get("routes", []),
+    )
+
+
 def normalize_role(role: str) -> str:
-    role_value = (role or "ciudadano").strip().lower()
-    return role_value if role_value in {"ciudadano", "operador", "admin", "conductor"} else "ciudadano"
+    role_value = (role or PUBLIC_REGISTRATION_ROLE).strip().lower()
+    valid = {item.value for item in Role}
+    return role_value if role_value in valid else PUBLIC_REGISTRATION_ROLE
 
 
 def build_alerts(routes: list[dict[str, Any]], containers: list[dict[str, Any]] | None = None) -> list[str]:
@@ -394,13 +472,13 @@ def build_alerts(routes: list[dict[str, Any]], containers: list[dict[str, Any]] 
     for route in routes:
         if route_is_delayed(route):
             alerts.append(f"{route['truck']} presenta retraso en {route['zone']}.")
-        elif int(route.get("progress", 0)) < 40:
+        elif int(route.get("progress", 0)) < ROUTE_PROGRESS_LOW:
             alerts.append(f"{route['truck']} presenta posible retraso en {route['zone']} debido a bajo avance.")
     for container in containers or []:
         fill_level = int(container.get("fill_level", 0))
-        if fill_level >= 85:
+        if fill_level >= CONTAINER_FILL_CRITICAL:
             alerts.append(f"Contenedor {container['name']} está casi lleno ({fill_level}%).")
-        elif fill_level >= 70:
+        elif fill_level >= CONTAINER_FILL_WARNING:
             alerts.append(f"Contenedor {container['name']} requiere revisión ({fill_level}%).")
     return alerts
 
@@ -447,11 +525,11 @@ def optimize_routes(routes: list[dict[str, Any]], priority_zones: list[str] | No
 
 
 def suggest_truck_assignments(trucks: list[dict[str, Any]], optimized_routes: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    active_trucks = [truck for truck in trucks if str(truck.get("status", "")).lower() == "en ruta"]
+    active_trucks = [truck for truck in trucks if str(truck.get("status", "")).lower() == TRUCK_STATUS_ON_ROUTE.lower()]
     assignments = []
     for index, route in enumerate(optimized_routes[: len(active_trucks)]):
         truck = active_trucks[index] if index < len(active_trucks) else None
-        priority_label = "Alta" if route_is_delayed(route) or int(route.get("progress", 0)) < 40 else "Media"
+        priority_label = "Alta" if route_is_delayed(route) or int(route.get("progress", 0)) < ROUTE_PROGRESS_LOW else "Media"
         assignments.append({
             "route_id": route.get("id"),
             "truck_code": truck.get("code") if truck else route.get("truck"),
@@ -495,10 +573,10 @@ def build_performance_metrics(routes: list[dict[str, Any]], reports: list[dict[s
     containers = containers or []
     total_routes = len(routes)
     delayed_routes = len([route for route in routes if route_is_delayed(route)])
-    low_progress_routes = len([route for route in routes if int(route.get("progress", 0)) < 40])
+    low_progress_routes = len([route for route in routes if int(route.get("progress", 0)) < ROUTE_PROGRESS_LOW])
     average_progress = round(sum(int(route.get("progress", 0)) for route in routes) / max(1, total_routes)) if total_routes else 0
     average_fill = round(sum(int(container.get("fill_level", 0)) for container in containers) / max(1, len(containers))) if containers else 0
-    open_reports = len([report for report in reports if str(report.get("status", "")).lower() != "resuelto"])
+    open_reports = len([report for report in reports if str(report.get("status", "")).lower() != REPORT_STATUS_RESOLVED.lower()])
     compliance_estimate = max(0, 100 - delayed_routes * 10 - low_progress_routes * 5)
     return {
         "total_routes": total_routes,
@@ -535,7 +613,7 @@ def simulate_container_fill(containers: list[dict[str, Any]]) -> list[dict[str, 
     simulated: list[dict[str, Any]] = []
     for container in containers:
         fill_level = min(100, int(container.get("fill_level", 0)) + 5)
-        status = "Lleno" if fill_level >= 90 else "Operativo"
+        status = CONTAINER_STATUS_FULL if fill_level >= CONTAINER_FILL_CONSIDERED_FULL else CONTAINER_STATUS_OK
         simulated.append({
             **container,
             "fill_level": fill_level,
@@ -565,7 +643,7 @@ def build_user_payload(user: dict[str, Any]) -> dict[str, Any]:
         "id": user.get("id"),
         "name": user.get("name"),
         "email": user.get("email"),
-        "role": normalize_role(str(user.get("role", "ciudadano"))),
+        "role": normalize_role(str(user.get("role", PUBLIC_REGISTRATION_ROLE))),
         "zone": user.get("zone", "Centro Historico"),
         "created_at": user.get("created_at"),
     }
@@ -575,7 +653,7 @@ def create_token(user: dict[str, Any]) -> str:
     payload = {
         "sub": str(user["id"]),
         "email": user["email"],
-        "role": normalize_role(str(user.get("role", "ciudadano"))),
+        "role": normalize_role(str(user.get("role", PUBLIC_REGISTRATION_ROLE))),
         "name": user.get("name"),
         "zone": user.get("zone", "Centro Historico"),
         "exp": datetime.now(timezone.utc) + timedelta(hours=12),
@@ -951,54 +1029,86 @@ def delete_maintenance(maintenance_id: int) -> None:
         memory.maintenance = [item for item in memory.maintenance if item["id"] != maintenance_id]
 
 
-    def create_collection_record(payload: CollectionCreate, created_by: dict[str, Any] | None = None) -> dict[str, Any]:
-        try:
-            row = execute_one(
-                "insert into collections (truck_id, zone_id, kg, status, date, created_by) values (%s, %s, %s, %s, %s, %s) returning id, kg, status, date, truck_id, zone_id",
-                (payload.truck_id, payload.zone_id, payload.kg, payload.status, datetime.now(timezone.utc), created_by and created_by.get("id")),
-            )
-            return {
-                "id": row.get("id"),
-                "zone": get_zone_name(row.get("zone_id")),
-                "truck": next((t.get("code") for t in bootstrap().get("trucks", []) if int(t.get("id", 0)) == int(row.get("truck_id", 0))), str(row.get("truck_id"))),
-                "kg": row.get("kg"),
-                "status": row.get("status"),
-                "date": row.get("date"),
-            }
-        except Exception:
-            new_id = max([c["id"] for c in memory.collections], default=0) + 1
-            truck_code = next((t.get("code") for t in memory.trucks if int(t.get("id", 0)) == int(payload.truck_id)), str(payload.truck_id))
-            zone_name = get_zone_name(payload.zone_id) or next((z.get("name") for z in memory.zones if int(z.get("id", 0)) == int(payload.zone_id)), str(payload.zone_id))
-            item = {
-                "id": new_id,
-                "zone": zone_name,
-                "truck": truck_code,
-                "kg": payload.kg,
-                "status": payload.status,
-                "date": datetime.now(timezone.utc).date().isoformat(),
-            }
-            memory.collections.append(item)
-            return item
+def get_truck_code(truck_id: int | None) -> str | None:
+    """Código visible del camión (C-01), no su id interno."""
+    if truck_id is None:
+        return None
+    try:
+        return str(execute_one("select id, code from trucks where id = %s", (truck_id,)).get("code"))
+    except Exception:
+        for truck in memory.trucks:
+            if int(truck.get("id", 0)) == int(truck_id):
+                return str(truck.get("code"))
+        return None
 
 
-    def confirm_collection_by_citizen(collection_id: int, citizen: dict[str, Any]) -> dict[str, Any]:
-        try:
-            if database_mode() == "postgresql":
-                row = execute_one("update collections set status = %s where id = %s returning id, kg, status, date, truck_id, zone_id", ("Confirmada por ciudadano", collection_id))
-                return {
-                    "id": row.get("id"),
-                    "zone": get_zone_name(row.get("zone_id")),
-                    "truck": next((t.get("code") for t in bootstrap().get("trucks", []) if int(t.get("id", 0)) == int(row.get("truck_id", 0))), str(row.get("truck_id"))),
-                    "kg": row.get("kg"),
-                    "status": row.get("status"),
-                    "date": row.get("date"),
-                }
-        except Exception:
-            for col in memory.collections:
-                if int(col.get("id", 0)) == int(collection_id):
-                    col["status"] = "Confirmada por ciudadano"
-                    return col
-            raise HTTPException(status_code=404, detail="Recolección no encontrada")
+def build_collection_payload(row: dict[str, Any]) -> dict[str, Any]:
+    """Forma común de una recolección: resuelve zona y camión a sus nombres.
+
+    Antes cada función la construía a mano, y para obtener el código del camión
+    llamaba a `bootstrap()` entero (todas las tablas) por una sola búsqueda.
+    """
+    truck_id = row.get("truck_id")
+    zone_id = row.get("zone_id")
+    date_value = row.get("date")
+    return {
+        "id": row.get("id"),
+        "zone": row.get("zone") or get_zone_name(zone_id) or str(zone_id),
+        "truck": row.get("truck") or get_truck_code(truck_id) or str(truck_id),
+        "kg": row.get("kg"),
+        "status": row.get("status"),
+        "date": date_value.isoformat() if isinstance(date_value, (date, datetime)) else date_value,
+    }
+
+
+def create_collection_record(payload: CollectionCreate, created_by: dict[str, Any] | None = None) -> dict[str, Any]:
+    try:
+        row = execute_one(
+            "insert into collections (truck_id, zone_id, kg, status, date, created_by) "
+            "values (%s, %s, %s, %s, %s, %s) "
+            "returning id, kg, status, date, truck_id, zone_id",
+            (
+                payload.truck_id,
+                payload.zone_id,
+                payload.kg,
+                payload.status,
+                datetime.now(timezone.utc).date(),
+                created_by and created_by.get("id"),
+            ),
+        )
+        return build_collection_payload(row)
+    except Exception:
+        item = {
+            "id": max([item["id"] for item in memory.collections], default=0) + 1,
+            "zone": get_zone_name(payload.zone_id) or str(payload.zone_id),
+            "truck": get_truck_code(payload.truck_id) or str(payload.truck_id),
+            "kg": payload.kg,
+            "status": payload.status,
+            "date": datetime.now(timezone.utc).date().isoformat(),
+        }
+        memory.collections.append(item)
+        return item
+
+
+def confirm_collection_by_citizen(collection_id: int) -> dict[str, Any]:
+    """Marca una recolección como confirmada por el ciudadano.
+
+    La versión anterior solo devolvía algo dentro de `if database_mode() == "postgresql"`,
+    así que en modo memoria caía al final del `try` y retornaba `None` sin error.
+    """
+    try:
+        row = execute_one(
+            "update collections set status = %s where id = %s "
+            "returning id, kg, status, date, truck_id, zone_id",
+            (COLLECTION_STATUS_CONFIRMED_BY_CITIZEN, collection_id),
+        )
+        return build_collection_payload(row)
+    except Exception:
+        for collection in memory.collections:
+            if int(collection.get("id", 0)) == int(collection_id):
+                collection["status"] = COLLECTION_STATUS_CONFIRMED_BY_CITIZEN
+                return collection
+        raise HTTPException(status_code=404, detail="Recolección no encontrada")
 
 
 def create_password_reset_token(email: str, token: str, expires_at: datetime) -> dict[str, Any]:
@@ -1054,6 +1164,47 @@ def bootstrap() -> dict[str, Any]:
         return payload
 
 
+def visible_reports_for(user: dict[str, Any], reports: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Un ciudadano solo ve sus propios reportes; el resto de roles los ve todos.
+
+    Nota: el filtro compara por NOMBRE porque `reports.citizen` guarda el nombre
+    y no el id del usuario. Dos ciudadanos homónimos ven los reportes del otro.
+    El arreglo de fondo (FK a users) está en la Fase 5 del plan.
+    """
+    if normalize_role(str(user.get("role", PUBLIC_REGISTRATION_ROLE))) != Role.CIUDADANO.value:
+        return reports
+    own_name = str(user.get("name", "")).strip().lower()
+    return [report for report in reports if str(report.get("citizen", "")).strip().lower() == own_name]
+
+
+def visible_notifications_for(user: dict[str, Any], notifications: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Notificaciones propias más las de difusión (sin destinatario).
+
+    Antes se devolvían todas a todo el mundo, así que cualquier usuario leía los
+    avisos dirigidos a los demás.
+    """
+    user_id = user.get("id")
+    return [
+        item
+        for item in notifications
+        if item.get("user_id") is None or item.get("user_id") == user_id
+    ]
+
+
+def bootstrap_for(user: dict[str, Any]) -> dict[str, Any]:
+    """Carga inicial recortada a lo que el usuario tiene derecho a ver.
+
+    `/api/bootstrap` era anónimo y devolvía el listado completo de usuarios con
+    sus correos, todos los reportes ciudadanos y todas las notificaciones.
+    """
+    data = bootstrap()
+    data["reports"] = visible_reports_for(user, data.get("reports", []))
+    data["notifications"] = visible_notifications_for(user, data.get("notifications", []))
+    if normalize_role(str(user.get("role", PUBLIC_REGISTRATION_ROLE))) not in ADMIN_ROLES:
+        data["users"] = []
+    return data
+
+
 def require_current_user(authorization: str | None = Header(default=None)) -> dict[str, Any]:
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Token requerido")
@@ -1070,7 +1221,7 @@ def require_current_user(authorization: str | None = Header(default=None)) -> di
 
 def require_role(allowed_roles: set[str]):
     def dependency(current_user: dict[str, Any] = Depends(require_current_user)) -> dict[str, Any]:
-        if normalize_role(str(current_user.get("role", "ciudadano"))) not in allowed_roles:
+        if normalize_role(str(current_user.get("role", PUBLIC_REGISTRATION_ROLE))) not in allowed_roles:
             raise HTTPException(status_code=403, detail="No autorizado para esta acción")
         return current_user
 
@@ -1089,8 +1240,10 @@ def health() -> dict[str, str]:
 
 
 @app.get("/api/bootstrap")
-def get_bootstrap() -> dict[str, Any]:
-    return bootstrap()
+def get_bootstrap(current_user: dict[str, Any] = Depends(require_current_user)) -> dict[str, Any]:
+    # Exige sesión: el catálogo público que necesita la pantalla de acceso
+    # (las zonas) se sirve por GET /api/zones, que sí es anónimo.
+    return bootstrap_for(current_user)
 
 
 @app.post("/api/auth/register")
@@ -1098,7 +1251,12 @@ def register(payload: RegisterRequest) -> dict[str, Any]:
     existing = get_user_by_email(str(payload.email))
     if existing is not None:
         raise HTTPException(status_code=409, detail="Este correo ya está registrado")
-    user = create_user_record(payload)
+    # El registro público SIEMPRE crea un ciudadano. Antes el rol venía del
+    # cuerpo de la petición, así que cualquiera podía darse de alta como "admin"
+    # y quedarse con el control del sistema. Los roles con privilegios solo se
+    # asignan desde POST /api/users, que exige un administrador autenticado.
+    public_payload = payload.model_copy(update={"role": PUBLIC_REGISTRATION_ROLE})
+    user = create_user_record(public_payload)
     token = create_token(user)
     return {"ok": True, "token": token, "user": user}
 
@@ -1156,12 +1314,12 @@ def reset_password(payload: PasswordResetConfirm) -> dict[str, Any]:
     return {"ok": True, "message": "Contraseña actualizada correctamente"}
 
 
-@app.get("/api/users", dependencies=[Depends(require_role({"admin"}))])
+@app.get("/api/users", dependencies=[Depends(require_role(ADMIN_ROLES))])
 def get_users() -> list[dict[str, Any]]:
     return list_users()
 
 
-@app.post("/api/users", dependencies=[Depends(require_role({"admin"}))])
+@app.post("/api/users", dependencies=[Depends(require_role(ADMIN_ROLES))])
 def create_user(payload: RegisterRequest) -> dict[str, Any]:
     existing = get_user_by_email(str(payload.email))
     if existing is not None:
@@ -1170,12 +1328,12 @@ def create_user(payload: RegisterRequest) -> dict[str, Any]:
     return user
 
 
-@app.patch("/api/users/{user_id}", dependencies=[Depends(require_role({"admin"}))])
+@app.patch("/api/users/{user_id}", dependencies=[Depends(require_role(ADMIN_ROLES))])
 def patch_user(user_id: int, payload: UserUpdate) -> dict[str, Any]:
     return update_user(user_id, payload)
 
 
-@app.delete("/api/users/{user_id}", dependencies=[Depends(require_role({"admin"}))])
+@app.delete("/api/users/{user_id}", dependencies=[Depends(require_role(ADMIN_ROLES))])
 def remove_user(user_id: int) -> dict[str, Any]:
     delete_user(user_id)
     return {"ok": "true", "message": "Usuario eliminado"}
@@ -1186,17 +1344,17 @@ def get_zones() -> list[dict[str, Any]]:
     return bootstrap()["zones"]
 
 
-@app.post("/api/zones", dependencies=[Depends(require_role({"admin"}))])
+@app.post("/api/zones", dependencies=[Depends(require_role(ADMIN_ROLES))])
 def create_zone(payload: ZoneCreate) -> dict[str, Any]:
     return create_zone_record(payload)
 
 
-@app.patch("/api/zones/{zone_id}", dependencies=[Depends(require_role({"admin"}))])
+@app.patch("/api/zones/{zone_id}", dependencies=[Depends(require_role(ADMIN_ROLES))])
 def patch_zone(zone_id: int, payload: ZoneUpdate) -> dict[str, Any]:
     return update_zone(zone_id, payload)
 
 
-@app.delete("/api/zones/{zone_id}", dependencies=[Depends(require_role({"admin"}))])
+@app.delete("/api/zones/{zone_id}", dependencies=[Depends(require_role(ADMIN_ROLES))])
 def remove_zone(zone_id: int) -> dict[str, Any]:
     delete_zone(zone_id)
     return {"ok": "true", "message": "Zona eliminada"}
@@ -1207,17 +1365,17 @@ def get_schedules() -> list[dict[str, Any]]:
     return bootstrap()["schedules"]
 
 
-@app.post("/api/schedules", dependencies=[Depends(require_role({"admin"}))])
+@app.post("/api/schedules", dependencies=[Depends(require_role(ADMIN_ROLES))])
 def create_schedule(payload: ScheduleCreate) -> dict[str, Any]:
     return create_schedule_record(payload)
 
 
-@app.patch("/api/schedules/{schedule_id}", dependencies=[Depends(require_role({"admin"}))])
+@app.patch("/api/schedules/{schedule_id}", dependencies=[Depends(require_role(ADMIN_ROLES))])
 def patch_schedule(schedule_id: int, payload: ScheduleUpdate) -> dict[str, Any]:
     return update_schedule(schedule_id, payload)
 
 
-@app.delete("/api/schedules/{schedule_id}", dependencies=[Depends(require_role({"admin"}))])
+@app.delete("/api/schedules/{schedule_id}", dependencies=[Depends(require_role(ADMIN_ROLES))])
 def remove_schedule(schedule_id: int) -> dict[str, Any]:
     delete_schedule(schedule_id)
     return {"ok": "true", "message": "Horario eliminado"}
@@ -1228,17 +1386,17 @@ def get_trucks() -> list[dict[str, Any]]:
     return bootstrap()["trucks"]
 
 
-@app.post("/api/trucks", dependencies=[Depends(require_role({"admin"}))])
+@app.post("/api/trucks", dependencies=[Depends(require_role(ADMIN_ROLES))])
 def create_truck(payload: TruckCreate) -> dict[str, Any]:
     return create_truck_record(payload)
 
 
-@app.patch("/api/trucks/{truck_id}", dependencies=[Depends(require_role({"admin"}))])
+@app.patch("/api/trucks/{truck_id}", dependencies=[Depends(require_role(ADMIN_ROLES))])
 def patch_truck(truck_id: int, payload: TruckUpdate) -> dict[str, Any]:
     return update_truck(truck_id, payload)
 
 
-@app.delete("/api/trucks/{truck_id}", dependencies=[Depends(require_role({"admin"}))])
+@app.delete("/api/trucks/{truck_id}", dependencies=[Depends(require_role(ADMIN_ROLES))])
 def remove_truck(truck_id: int) -> dict[str, Any]:
     delete_truck(truck_id)
     return {"ok": "true", "message": "Camión eliminado"}
@@ -1249,17 +1407,17 @@ def get_maintenance() -> list[dict[str, Any]]:
     return bootstrap()["maintenance"]
 
 
-@app.post("/api/maintenance", dependencies=[Depends(require_role({"admin"}))])
+@app.post("/api/maintenance", dependencies=[Depends(require_role(ADMIN_ROLES))])
 def create_maintenance(payload: MaintenanceCreate) -> dict[str, Any]:
     return create_maintenance_record(payload)
 
 
-@app.patch("/api/maintenance/{maintenance_id}", dependencies=[Depends(require_role({"admin"}))])
+@app.patch("/api/maintenance/{maintenance_id}", dependencies=[Depends(require_role(ADMIN_ROLES))])
 def patch_maintenance(maintenance_id: int, payload: MaintenanceUpdate) -> dict[str, Any]:
     return update_maintenance(maintenance_id, payload)
 
 
-@app.delete("/api/maintenance/{maintenance_id}", dependencies=[Depends(require_role({"admin"}))])
+@app.delete("/api/maintenance/{maintenance_id}", dependencies=[Depends(require_role(ADMIN_ROLES))])
 def remove_maintenance(maintenance_id: int) -> dict[str, Any]:
     delete_maintenance(maintenance_id)
     return {"ok": "true", "message": "Registro de mantenimiento eliminado"}
@@ -1276,7 +1434,7 @@ def get_routes() -> list[dict[str, Any]]:
     return bootstrap()["routes"]
 
 
-def build_monitor(simulate: bool = True) -> dict[str, Any]:
+def build_monitor(simulate: bool = True, user: dict[str, Any] | None = None) -> dict[str, Any]:
     data = bootstrap()
     if simulate:
         data["routes"] = simulate_route_progress(data.get("routes", []))
@@ -1298,7 +1456,11 @@ def build_monitor(simulate: bool = True) -> dict[str, Any]:
         "alerts": build_alerts(routes=data.get("routes", []), containers=data.get("containers", [])),
         "containers": data.get("containers", []),
         "maintenance": data.get("maintenance", []),
-        "notifications": data.get("notifications", []),
+        "notifications": (
+            visible_notifications_for(user, data.get("notifications", []))
+            if user is not None
+            else data.get("notifications", [])
+        ),
         "prioritized_zones": prioritized_zones,
         "optimized_routes": optimized_routes,
         "truck_assignments": assignments,
@@ -1308,12 +1470,13 @@ def build_monitor(simulate: bool = True) -> dict[str, Any]:
 
 
 @app.get("/api/operations/monitor")
-def get_monitor() -> dict[str, Any]:
-    return build_monitor()
+def get_monitor(current_user: dict[str, Any] = Depends(require_current_user)) -> dict[str, Any]:
+    # Requiere sesión: el monitor incluye notificaciones, que son personales.
+    return build_monitor(user=current_user)
 
 
 @app.post("/api/operations/update")
-def update_operation(payload: OperationUpdateRequest, current_user: dict[str, Any] = Depends(require_role({"operador", "admin"}))) -> dict[str, Any]:
+def update_operation(payload: OperationUpdateRequest, current_user: dict[str, Any] = Depends(require_role(OPERATIONAL_ROLES))) -> dict[str, Any]:
     data = bootstrap()
     if payload.type == "route_update":
         updated = False
@@ -1413,7 +1576,7 @@ def update_operation(payload: OperationUpdateRequest, current_user: dict[str, An
         memory.notifications.insert(0, notification)
         data["notifications"] = memory.notifications
 
-    return build_monitor(simulate=False)
+    return build_monitor(simulate=False, user=current_user)
 
 
 @app.get("/alerts")
@@ -1439,19 +1602,21 @@ def get_eta(truck: str | None = None) -> dict[str, Any]:
 
 @app.get("/api/reports")
 def get_reports(current_user: dict[str, Any] = Depends(require_current_user)) -> list[dict[str, Any]]:
-    reports = bootstrap()["reports"]
-    role = normalize_role(str(current_user.get("role", "ciudadano")))
-    if role == "ciudadano":
-        return [report for report in reports if report.get("citizen", "").lower() == str(current_user.get("name", "")).lower()]
-    return reports
+    return visible_reports_for(current_user, bootstrap()["reports"])
 
 
 @app.post("/api/reports")
 def create_report(payload: ReportCreate, current_user: dict[str, Any] = Depends(require_current_user)) -> dict[str, Any]:
     try:
         report = execute_one(
-            "insert into reports (citizen, zone, type, detail, status) values (%s, %s, %s, %s, 'Pendiente') returning id, citizen, zone, type, detail, status",
-            (current_user.get("name", payload.citizen), payload.zone, payload.type, payload.detail),
+            "insert into reports (citizen, zone, type, detail, status) values (%s, %s, %s, %s, %s) returning id, citizen, zone, type, detail, status",
+            (
+                current_user.get("name", payload.citizen),
+                payload.zone,
+                payload.type,
+                payload.detail,
+                REPORT_STATUS_PENDING,
+            ),
         )
         return report
     except Exception as exc:
@@ -1460,26 +1625,26 @@ def create_report(payload: ReportCreate, current_user: dict[str, Any] = Depends(
         report = payload.model_dump()
         report["citizen"] = current_user.get("name", payload.citizen)
         report["id"] = max([item["id"] for item in memory.reports], default=0) + 1
-        report["status"] = "Pendiente"
+        report["status"] = REPORT_STATUS_PENDING
         memory.reports.insert(0, report)
         return report
 
 
 @app.patch("/api/reports/{report_id}/resolve")
 def resolve_report(report_id: int, current_user: dict[str, Any] = Depends(require_current_user)) -> dict[str, Any]:
-    if normalize_role(str(current_user.get("role", "ciudadano"))) not in {"operador", "admin"}:
+    if normalize_role(str(current_user.get("role", PUBLIC_REGISTRATION_ROLE))) not in OPERATIONAL_ROLES:
         raise HTTPException(status_code=403, detail="Solo operadores o administradores pueden resolver reportes")
     try:
         return execute_one(
-            "update reports set status = 'Resuelto' where id = %s returning id, citizen, zone, type, detail, status",
-            (report_id,),
+            "update reports set status = %s where id = %s returning id, citizen, zone, type, detail, status",
+            (REPORT_STATUS_RESOLVED, report_id),
         )
     except Exception as exc:
         if isinstance(exc, HTTPException):
             raise
         for report in memory.reports:
             if report["id"] == report_id:
-                report["status"] = "Resuelto"
+                report["status"] = REPORT_STATUS_RESOLVED
                 return report
         raise HTTPException(status_code=404, detail="Reporte no encontrado")
 
@@ -1489,7 +1654,7 @@ def get_collections() -> list[dict[str, Any]]:
     return bootstrap()["collections"]
 
 
-@app.post("/api/collections", dependencies=[Depends(require_role({"conductor"}))])
+@app.post("/api/collections", dependencies=[Depends(require_role({Role.CONDUCTOR.value}))])
 def register_collection(payload: CollectionCreate, current_user: dict[str, Any] = Depends(require_current_user)) -> dict[str, Any]:
     # Permitimos que un conductor registre la recolección realizada
     created = create_collection_record(payload, created_by=current_user)
@@ -1499,10 +1664,9 @@ def register_collection(payload: CollectionCreate, current_user: dict[str, Any] 
 @app.post("/api/collections/{collection_id}/confirm")
 def confirm_collection(collection_id: int, current_user: dict[str, Any] = Depends(require_current_user)) -> dict[str, Any]:
     # Solo un ciudadano puede confirmar la recolección de su zona/registro
-    if normalize_role(str(current_user.get("role"))) != "ciudadano":
+    if normalize_role(str(current_user.get("role"))) != Role.CIUDADANO.value:
         raise HTTPException(status_code=403, detail="Solo ciudadanos pueden confirmar recolecciones")
-    confirmed = confirm_collection_by_citizen(collection_id, current_user)
-    return confirmed
+    return confirm_collection_by_citizen(collection_id)
 
 
 @app.get("/api/analytics/summary")

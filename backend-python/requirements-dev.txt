@@ -1,11 +1,19 @@
-# Dependencias solo de desarrollo/pruebas.
-# Se mantienen fuera de requirements.txt para no instalarlas en producción
-# (Render/Railway instalan requirements.txt en el despliegue).
+# Dependencias solo de desarrollo y pruebas.
+# Se mantienen fuera de requirements.txt para no instalarlas en la imagen
+# Docker que Render construye.
 #
 # Uso:
-#   .\.venv\Scripts\python.exe -m pip install -r backend-python\requirements-dev.txt
+#   python -m venv .venv
+#   .\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
 #   .\.venv\Scripts\python.exe -m pytest -q
 
 -r requirements.txt
 
 pytest>=8.0.0
+
+# `fastapi.testclient` lo necesita para funcionar. Faltaba, así que la suite
+# no arrancaba en una máquina limpia.
+httpx>=0.27.0
+
+# Solo lo usa tests/test_security.py; la aplicación usa `bcrypt` directamente.
+passlib>=1.7.4

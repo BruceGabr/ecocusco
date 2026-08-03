@@ -50,7 +50,8 @@ def test_completed_routes_have_completed_status():
 # --- BOOTSTRAP: Los IDs de schedules deben coincidir con zonas existentes ---
 def test_schedules_reference_valid_zones():
     client = TestClient(app)
-    data = client.get("/api/bootstrap").json()
+    token = _login_as_admin(client)
+    data = client.get("/api/bootstrap", headers={"Authorization": f"Bearer {token}"}).json()
     zone_ids = {z["id"] for z in data["zones"]}
     for schedule in data["schedules"]:
         assert schedule["zone_id"] in zone_ids, f"Schedule {schedule['id']} referencia zone_id {schedule['zone_id']} inexistente"
@@ -145,19 +146,55 @@ def test_login_as_admin_returns_admin_role():
     assert login.json()["user"]["role"] == "admin"
 
 
-# --- ROLES: Al registrar un operador, el rol se asigna correctamente ---
-def test_register_operador_assigns_correct_role():
+# --- ROLES: el registro público ignora el rol pedido y crea un ciudadano ---
+#
+# Este test comprobaba lo contrario (que pedir "operador" te daba "operador"),
+# es decir, fijaba por escrito una escalada de privilegios: cualquiera podía
+# registrarse como "admin" desde el formulario público y tomar el control.
+def test_public_register_always_creates_citizen():
     client = TestClient(app)
     response = client.post("/api/auth/register", json={
         "name": "Operador Test",
         "email": "operador_test@test.pe",
         "password": "operador123",
-        "role": "operador",
+        "role": "admin",
         "zone": "Wanchaq",
     })
     assert response.status_code == 200
-    assert response.json()["user"]["role"] == "operador"
+    assert response.json()["user"]["role"] == "ciudadano"
 
     login = client.post("/api/auth/login", json={"email": "operador_test@test.pe", "password": "operador123"})
     assert login.status_code == 200
-    assert login.json()["user"]["role"] == "operador"
+    assert login.json()["user"]["role"] == "ciudadano"
+
+
+# --- ROLES: los roles con privilegios solo los asigna un administrador ---
+def test_admin_can_create_privileged_user():
+    client = TestClient(app)
+    token = _login_as_admin(client)
+    response = client.post(
+        "/api/users",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "name": "Operador Municipal",
+            "email": "operador_municipal@test.pe",
+            "password": "operador123",
+            "role": "operador",
+            "zone": "Wanchaq",
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["role"] == "operador"
+
+
+# --- ROLES: sin autenticación no se pueden crear usuarios privilegiados ---
+def test_anonymous_cannot_create_privileged_user():
+    client = TestClient(app)
+    response = client.post("/api/users", json={
+        "name": "Intruso",
+        "email": "intruso@test.pe",
+        "password": "intruso123",
+        "role": "admin",
+        "zone": "Wanchaq",
+    })
+    assert response.status_code == 401

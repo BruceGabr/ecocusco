@@ -92,7 +92,7 @@ def test_e2e_route_update_persists_to_routes_and_monitor():
         for note in payload["notifications"]
     )
 
-    monitor = client.get("/api/operations/monitor")
+    monitor = client.get("/api/operations/monitor", headers={"Authorization": f"Bearer {token}"})
     assert monitor.status_code == 200
     monitor_payload = monitor.json()
     assert monitor_payload["performance"]["delayed_routes"] >= 1
@@ -121,13 +121,13 @@ def test_e2e_container_update_persists_to_containers_and_monitor():
     )
     assert any(container["id"] == 1 and container["fill_level"] == 95 for container in payload["containers"])
 
-    monitor = client.get("/api/operations/monitor")
+    monitor = client.get("/api/operations/monitor", headers={"Authorization": f"Bearer {token}"})
     assert monitor.status_code == 200
     monitor_payload = monitor.json()
     assert any(container["id"] == 1 for container in monitor_payload["containers"])
     assert any(container["id"] == 1 and container["fill_level"] >= 95 for container in monitor_payload["containers"])
 
-    bootstrap_data = client.get("/api/bootstrap")
+    bootstrap_data = client.get("/api/bootstrap", headers={"Authorization": f"Bearer {token}"})
     assert bootstrap_data.status_code == 200
     assert any(container["id"] == 1 and container["fill_level"] == 95 for container in bootstrap_data.json()["containers"])
 
