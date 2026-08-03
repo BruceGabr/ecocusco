@@ -14,8 +14,24 @@ APP_VERSION = "1.0.0"
 
 JWT_ALGORITHM = "HS256"
 
-#: Duración de la sesión emitida al iniciar sesión.
-TOKEN_TTL_HOURS = 12
+# --- Política de sesión ---------------------------------------------------
+#
+# La sesión es deslizante: el token vive poco y se renueva mientras la persona
+# usa la aplicación. Si deja de usarla, nadie pide la renovación y caduca solo,
+# sin necesidad de temporizadores en el servidor.
+#
+# Antes el token duraba 12 horas fijas desde el inicio de sesión, así que
+# cortaba a mitad de la jornada aunque se estuviera trabajando.
+
+#: Vida de cada token. Al caducar hay que renovarlo o volver a iniciar sesión.
+#: Marca también el tiempo de inactividad tolerado.
+TOKEN_TTL_MINUTES = 30
+
+#: Tope absoluto desde el inicio de sesión original. Aunque haya actividad
+#: continua, pasado este plazo hay que autenticarse de nuevo. Sin él, una
+#: sesión renovada sin pausa sería eterna, algo inaceptable en un equipo
+#: compartido que maneja datos personales de ciudadanos.
+SESSION_ABSOLUTE_MAX_HOURS = 12
 
 #: Validez del token de recuperación de contraseña.
 PASSWORD_RESET_TTL_MINUTES = 20

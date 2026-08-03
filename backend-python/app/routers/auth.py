@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.config import PASSWORD_RESET_TTL_MINUTES
 from app.constants import PUBLIC_REGISTRATION_ROLE
-from app.dependencies import require_current_user
+from app.dependencies import require_current_user, require_token_payload
 from app.repositories.password_resets import (
     create_password_reset_token,
     delete_password_reset_token,
@@ -23,7 +23,13 @@ from app.repositories.users import (
     set_password,
 )
 from app.schemas import LoginRequest, PasswordResetConfirm, PasswordResetRequest, RegisterRequest
-from app.security import build_user_payload, create_token, hash_password, verify_password
+from app.security import (
+    build_user_payload,
+    create_token,
+    hash_password,
+    session_expires_at,
+    verify_password,
+)
 
 
 router = APIRouter(prefix="/api/auth", tags=["autenticación"])
@@ -55,6 +61,31 @@ def login(payload: LoginRequest) -> dict[str, Any]:
         raise HTTPException(status_code=401, detail="Credenciales inválidas")
     token = create_token(user)
     return {"ok": True, "token": token, "user": user}
+
+
+@router.post("/refresh")
+def refresh_session(payload: dict[str, Any] = Depends(require_token_payload)) -> dict[str, Any]:
+    """Renueva el token mientras la persona siga usando la aplicación.
+
+    El frontend lo llama solo si hubo actividad real. Si no la hay, nadie pide
+    la renovación y el token caduca por su cuenta: así la inactividad se
+    resuelve sin temporizadores en el servidor.
+
+    `require_token_payload` ya rechazó las sesiones que superaron el tope
+    absoluto, y `auth_time` se conserva para que renovar no lo desplace.
+    """
+    user = get_user_by_email(str(payload.get("email", "")))
+    if user is None:
+        raise HTTPException(status_code=401, detail="Usuario no encontrado")
+
+    auth_time = int(payload["auth_time"])
+    return {
+        "ok": True,
+        "token": create_token(user, auth_time=auth_time),
+        "user": user,
+        # Permite al frontend dejar de renovar cuando ya no tenga sentido.
+        "session_expires_at": session_expires_at(auth_time).isoformat(),
+    }
 
 
 @router.get("/me")

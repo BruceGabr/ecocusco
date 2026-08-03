@@ -22,6 +22,7 @@ import {
   viewsFor,
 } from './constants';
 import { useMonitor } from './hooks/useMonitor';
+import { useSessionRefresh } from './hooks/useSessionRefresh';
 import { ToastStack, useToasts } from './components/Toast';
 import { NotificationsMenu } from './components/NotificationsMenu';
 import { AuthView } from './views/AuthView';
@@ -41,6 +42,9 @@ export function App() {
   const { monitor, setMonitor } = useMonitor(Boolean(session), () =>
     expireSession(),
   );
+  // Mantiene la sesión viva mientras se use la aplicación: el token dura poco
+  // y solo se renueva si hubo actividad real desde la última comprobación.
+  useSessionRefresh(Boolean(session), () => expireSession());
   const effectiveData = useMemo(
     () => ({ ...data, ...monitor }) as Bootstrap,
     [data, monitor],
