@@ -14,6 +14,7 @@ vi.mock("leaflet", () => ({
 }));
 
 import { App } from "./main";
+import { viewLabels } from "./constants";
 
 const session = {
   id: 1,
@@ -73,7 +74,7 @@ describe("Reports view", () => {
 
     render(<App />);
 
-    await screen.findByRole("heading", { name: /Panel Principal/i });
+    await screen.findByRole("heading", { name: viewLabels.dashboard });
     fireEvent.click(screen.getByRole("button", { name: /Reportes/i }));
     await screen.findByRole("heading", { name: /Registrar incidencia/i });
     expect(screen.getByText(/Seguimiento/i)).toBeInTheDocument();

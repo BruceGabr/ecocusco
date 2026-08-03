@@ -22,6 +22,7 @@ vi.mock("leaflet", () => ({
 }));
 
 import { App } from "./main";
+import { viewLabels } from "./constants";
 
 declare global {
   interface Window {
@@ -182,7 +183,7 @@ describe("App e2e integration", () => {
 
     render(<App />);
 
-    await screen.findByRole("heading", { name: /Panel Principal/i });
+    await screen.findByRole("heading", { name: viewLabels.dashboard });
     fireEvent.click(screen.getByRole("button", { name: /Administración/i }));
     await openAdminTab("Eventos");
     await screen.findByRole("heading", { name: /Eventos operativos/i });
@@ -203,7 +204,7 @@ describe("App e2e integration", () => {
 
     render(<App />);
 
-    await screen.findByRole("heading", { name: /Panel Principal/i });
+    await screen.findByRole("heading", { name: viewLabels.dashboard });
     fireEvent.click(screen.getByRole("button", { name: /Administración/i }));
     await openAdminTab("Eventos");
     await screen.findByRole("heading", { name: /Eventos operativos/i });
@@ -262,7 +263,7 @@ describe("App e2e integration", () => {
 
     render(<App />);
 
-    await screen.findByRole("heading", { name: /Panel Principal/i });
+    await screen.findByRole("heading", { name: viewLabels.dashboard });
     fireEvent.click(screen.getByRole("button", { name: /Administración/i }));
 
     await waitFor(() => expect(screen.getByRole("heading", { name: /Gestión de usuarios/i })).toBeInTheDocument());
@@ -273,7 +274,7 @@ describe("App e2e integration", () => {
 
     render(<App />);
 
-    await screen.findByRole("heading", { name: /Panel Principal/i });
+    await screen.findByRole("heading", { name: viewLabels.dashboard });
     fireEvent.click(screen.getByRole("button", { name: /Administración/i }));
 
     // Cada sección vive en su pestaña, con una única acción principal visible.
@@ -296,7 +297,7 @@ describe("App e2e integration", () => {
 
     render(<App />);
 
-    await screen.findByRole("heading", { name: /Panel Principal/i });
+    await screen.findByRole("heading", { name: viewLabels.dashboard });
     fireEvent.click(screen.getByRole("button", { name: /Administración/i }));
 
     await openAdminTab("Zonas");
@@ -318,7 +319,7 @@ describe("App e2e integration", () => {
 
     render(<App />);
 
-    await screen.findByRole("heading", { name: /Panel Principal/i });
+    await screen.findByRole("heading", { name: viewLabels.dashboard });
     fireEvent.click(screen.getByRole("button", { name: /Administración/i }));
 
     await openAdminTab("Zonas");
@@ -333,7 +334,7 @@ describe("App e2e integration", () => {
 
     render(<App />);
 
-    await screen.findByRole("heading", { name: /Panel Principal/i });
+    await screen.findByRole("heading", { name: viewLabels.dashboard });
     fireEvent.click(screen.getByRole("button", { name: /Administración/i }));
 
     await openAdminTab("Camiones");
@@ -348,7 +349,7 @@ describe("App e2e integration", () => {
 
     render(<App />);
 
-    await screen.findByRole("heading", { name: /Panel Principal/i });
+    await screen.findByRole("heading", { name: viewLabels.dashboard });
     fireEvent.click(screen.getByRole("button", { name: /Administración/i }));
 
     await openAdminTab("Mantenimiento");
