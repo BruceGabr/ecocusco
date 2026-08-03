@@ -1,18 +1,11 @@
 import React, { FormEvent, useState } from "react";
-import { Role, Session, Zone } from "../types";
+import { Credentials, Role, Session, Zone } from "../types";
 import { request } from "../api";
 import { Icon } from "../components/Icon";
 import { Select } from "../components/Select";
 import { collectErrors, errorProps, FieldErrors } from "../utils/validation";
 
-const ROLE_OPTIONS = [
-  { value: "ciudadano", label: "Ciudadano" },
-  { value: "operador", label: "Operador" },
-  { value: "admin", label: "Administrador" },
-  { value: "conductor", label: "Conductor" },
-];
-
-export function AuthView({ zones, onLogin, message }: { zones: Zone[]; onLogin: (session: Session) => Promise<void>; message: string }) {
+export function AuthView({ zones, onLogin, message }: { zones: Zone[]; onLogin: (credentials: Credentials) => Promise<void>; message: string }) {
   const fallbackZones = zones.length ? zones.map(zone => zone.name) : ["Centro Historico", "Wanchaq", "San Sebastian", "San Jeronimo", "Santiago"];
   const [mode, setMode] = useState<"login" | "register" | "forgot">("login");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -22,9 +15,8 @@ export function AuthView({ zones, onLogin, message }: { zones: Zone[]; onLogin: 
   // duplicarlo mostraba el mismo texto dos veces (en verde y en rojo).
   const [localError, setLocalError] = useState("");
   const [errors, setErrors] = useState<FieldErrors>({});
-  // Rol y zona ya no viajan en el FormData: el Select propio no es un control
-  // nativo, así que su valor vive en el estado del componente.
-  const [role, setRole] = useState<Role>("ciudadano");
+  // La zona no viaja en el FormData: el Select propio no es un control nativo,
+  // así que su valor vive en el estado del componente.
   const [zone, setZone] = useState(fallbackZones[0] ?? "Centro Historico");
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -46,7 +38,9 @@ export function AuthView({ zones, onLogin, message }: { zones: Zone[]; onLogin: 
     setLocalError("");
     try {
       if (mode === "register") {
-        const created = await request<{ token?: string; user?: Session }>('/auth/register', { method: 'POST', body: JSON.stringify({ name, email, password, role, zone }) });
+        // El rol no se envía: el registro público siempre crea un ciudadano y
+        // el backend ignora lo que llegue en este campo.
+        const created = await request<{ token?: string; user?: Session }>('/auth/register', { method: 'POST', body: JSON.stringify({ name, email, password, zone }) });
         if (!created.token || !created.user) throw new Error('No se pudo registrar el usuario');
         localStorage.setItem('sir-token', created.token);
         localStorage.setItem('sir-session', JSON.stringify({ ...created.user, email }));
@@ -65,8 +59,10 @@ export function AuthView({ zones, onLogin, message }: { zones: Zone[]; onLogin: 
         setMode('login');
         return;
       }
-      (window as Window & { __password?: string }).__password = password;
-      await onLogin({ name, email, role, zone });
+      // La contraseña se pasa como argumento. Antes viajaba por
+      // `window.__password`, una variable global legible por cualquier script
+      // cargado en la página.
+      await onLogin({ email, password });
     } catch (error) {
       // El fallo de login ya viaja al contenedor y regresa por `message`.
       if (mode !== "login") {
@@ -143,19 +139,15 @@ export function AuthView({ zones, onLogin, message }: { zones: Zone[]; onLogin: 
                 </div>
               </>
             )}
-            {/* Solo en registro: al iniciar sesión el rol y la zona salen de la
-                cuenta, no de lo que se elija aquí. Mostrarlos en el login hacía
-                creer que se entraba con el rol seleccionado. */}
+            {/* Solo en registro. El selector de Rol se retiró: el alta pública
+                siempre crea un ciudadano, así que ofrecer "Administrador" era
+                a la vez engañoso y una escalada de privilegios. Las cuentas de
+                operador, conductor y administrador las crea un administrador
+                desde el panel. */}
             {mode === "register" && (
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-                <div className="form-group">
-                  <label htmlFor="role">Rol</label>
-                  <Select id="role" value={role} onChange={next => setRole(next as Role)} options={ROLE_OPTIONS} />
-                </div>
-                <div className="form-group">
-                  <label htmlFor="zone">Zona</label>
-                  <Select id="zone" value={zone} onChange={setZone} options={fallbackZones.map(item => ({ value: item, label: item }))} />
-                </div>
+              <div className="form-group">
+                <label htmlFor="zone">Zona</label>
+                <Select id="zone" value={zone} onChange={setZone} options={fallbackZones.map(item => ({ value: item, label: item }))} />
               </div>
             )}
             <button type="submit" className="btn-primary" disabled={isSubmitting} style={{marginTop:8}}>
