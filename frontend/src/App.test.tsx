@@ -5,21 +5,8 @@ import { ChildProcess, spawn } from "child_process";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
-vi.mock("leaflet", () => ({
-  default: {
-    map: () => ({
-      setView: () => {},
-      addLayer: () => {},
-      remove: () => {},
-    }),
-    tileLayer: () => ({ addTo: () => {} }),
-    layerGroup: () => ({ addTo: () => ({ remove: () => {} }) }),
-    marker: () => ({ bindPopup: () => ({ addTo: () => {} }) }),
-    circleMarker: () => ({ bindPopup: () => ({ addTo: () => {} }) }),
-    circle: () => ({ bindPopup: () => ({ addTo: () => {} }) }),
-    icon: () => ({}),
-  },
-}));
+// Mock compartido: ver src/test-utils/leaflet-mock.ts
+vi.mock("leaflet", () => import("./test-utils/leaflet-mock"));
 
 import { App } from "./main";
 import { viewLabels } from "./constants";

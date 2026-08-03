@@ -1,17 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, fireEvent, screen } from "@testing-library/react";
 
-vi.mock("leaflet", () => ({
-  default: {
-    map: () => ({ setView: () => ({ addLayer: () => ({ remove: () => {} }) }) }),
-    tileLayer: () => ({ addTo: () => {} }),
-    layerGroup: () => ({ addTo: () => ({ remove: () => {} }) }),
-    marker: () => ({ bindPopup: () => ({ addTo: () => {} }) }),
-    circleMarker: () => ({ bindPopup: () => ({ addTo: () => {} }) }),
-    circle: () => ({ bindPopup: () => ({ addTo: () => {} }) }),
-    icon: () => ({}),
-  },
-}));
+// Mock compartido: ver src/test-utils/leaflet-mock.ts
+vi.mock("leaflet", () => import("./test-utils/leaflet-mock"));
 
 import { App } from "./main";
 import { viewLabels } from "./constants";
