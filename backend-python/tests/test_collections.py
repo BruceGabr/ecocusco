@@ -14,8 +14,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import pytest
 from fastapi.testclient import TestClient
 
-from app.main import app, build_collection_payload, confirm_collection_by_citizen, create_collection_record
-from app.main import CollectionCreate
+from app.main import app
+from app.repositories.collections import (
+    build_collection_payload,
+    confirm_collection_by_citizen,
+    create_collection_record,
+)
+from app.schemas import CollectionCreate
 
 
 @pytest.fixture

@@ -3,7 +3,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.main import app, build_alerts, simulate_truck_positions
+from app.main import app
+from app.services.alerts import build_alerts
+from app.services.simulation import simulate_truck_positions
 from fastapi.testclient import TestClient
 
 
@@ -157,7 +159,10 @@ def test_password_reset_flow_uses_database_tokens(monkeypatch):
             return {"id": 1}
         return None
 
-    monkeypatch.setattr("app.main.execute_one", fake_execute)
+    # El acceso a datos vive en los repositorios, no en el punto de entrada, así
+    # que se sustituye en cada capa que participa en el flujo de recuperación.
+    for module in ("app.repositories.users", "app.repositories.password_resets"):
+        monkeypatch.setattr(f"{module}.execute_one", fake_execute)
 
     client = TestClient(app)
     forgot_response = client.post("/api/auth/forgot-password", json={"email": "admin@ecocusco.pe"})

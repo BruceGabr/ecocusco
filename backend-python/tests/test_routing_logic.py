@@ -3,7 +3,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.main import prioritize_zones, optimize_routes, build_intervention_plan, build_performance_metrics, simulate_route_progress, simulate_container_fill
+from app.services.metrics import build_performance_metrics
+from app.services.routing import build_intervention_plan, optimize_routes, prioritize_zones
+from app.services.simulation import simulate_container_fill, simulate_route_progress
 
 
 def test_prioritize_zones_ranks_critical_areas():
