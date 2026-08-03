@@ -4,7 +4,7 @@ import 'leaflet/dist/leaflet.css';
 import './styles.css';
 import Admin from './components/Admin';
 import { Icon } from './components/Icon';
-import { request } from './api';
+import { ApiError, request } from './api';
 import {
   Bootstrap,
   Credentials,
@@ -38,13 +38,16 @@ export function App() {
   const [session, setSession] = useState<Session | null>(() =>
     JSON.parse(localStorage.getItem('sir-session') || 'null'),
   );
-  const { monitor, setMonitor } = useMonitor(Boolean(session));
+  const { monitor, setMonitor } = useMonitor(Boolean(session), () =>
+    expireSession(),
+  );
   const effectiveData = useMemo(
     () => ({ ...data, ...monitor }) as Bootstrap,
     [data, monitor],
   );
   const [view, setView] = useState<View>('dashboard');
   const [loading, setLoading] = useState(true);
+  const [expiredSession, setExpiredSession] = useState(false);
   // Catálogo público para el desplegable de zonas del registro: es lo único
   // que la pantalla de acceso necesita, y GET /api/zones es anónimo.
   const [publicZones, setPublicZones] = useState<Zone[]>([]);
@@ -71,6 +74,36 @@ export function App() {
     document.documentElement.dataset.theme = isDarkMode ? 'dark' : 'light';
     document.documentElement.style.colorScheme = isDarkMode ? 'dark' : 'light';
   }, [isDarkMode]);
+
+  /**
+   * Devuelve al formulario de acceso porque el backend rechazó el token.
+   *
+   * Sin esto la aplicación se quedaba atascada: la sesión seguía en
+   * localStorage, el monitoreo reintentaba cada 10 segundos y la consola se
+   * llenaba de 401 indefinidamente. Pasa al caducar el token (dura 12 h) y
+   * también al cambiar de backend, porque cada uno firma con su propia clave.
+   */
+  function expireSession() {
+    clearSession();
+    setExpiredSession(true);
+  }
+
+  /** Trata el error si era de sesión. Devuelve true cuando lo gestionó. */
+  function handleSessionExpired(error: unknown): boolean {
+    if (!(error instanceof ApiError) || !error.isUnauthorized) return false;
+    expireSession();
+    return true;
+  }
+
+  function clearSession() {
+    localStorage.removeItem('sir-session');
+    localStorage.removeItem('sir-token');
+    setSession(null);
+    setData(emptyBootstrap);
+    setMonitor({});
+    setView('dashboard');
+    clearToasts();
+  }
 
   async function loadData() {
     setLoading(true);
@@ -104,12 +137,13 @@ export function App() {
       setLoading(false);
       return;
     }
-    loadData().catch(() =>
+    loadData().catch((error) => {
+      if (handleSessionExpired(error)) return;
       pushToast(
         'No se pudo conectar con el backend. Verifica que esté disponible.',
         'error',
-      ),
-    );
+      );
+    });
   }, [session?.email]);
 
   async function login(credentials: Credentials) {
@@ -130,6 +164,7 @@ export function App() {
       localStorage.setItem('sir-token', payload.token);
       setSession(session);
       setAuthError('');
+      setExpiredSession(false);
     } catch (error) {
       const message =
         error instanceof Error ? error.message : 'No se pudo iniciar sesión';
@@ -139,14 +174,11 @@ export function App() {
   }
 
   function logout() {
-    localStorage.removeItem('sir-session');
-    localStorage.removeItem('sir-token');
-    setSession(null);
-    setView('dashboard');
-    // Sin esto, los avisos de la sesión anterior sobrevivían al cierre de
-    // sesión y reaparecían dentro del formulario de acceso.
-    clearToasts();
+    // clearSession también vacía los avisos: sin eso, las notificaciones de la
+    // sesión anterior sobrevivían y reaparecían dentro del formulario de acceso.
+    clearSession();
     setAuthError('');
+    setExpiredSession(false);
   }
 
   async function createReport(report: Omit<Report, 'id' | 'status'>) {
@@ -222,7 +254,18 @@ export function App() {
   }
 
   if (!session) {
-    return <AuthView zones={publicZones} onLogin={login} message={authError} />;
+    return (
+      <AuthView
+        zones={publicZones}
+        onLogin={login}
+        message={
+          authError ||
+          (expiredSession
+            ? 'Tu sesión expiró. Vuelve a iniciar sesión para continuar.'
+            : '')
+        }
+      />
+    );
   }
 
   const operationalSignal = getOperationalSignal({ ...data, ...monitor });
