@@ -45,3 +45,10 @@ Thumbs.db
 *.tmp
 *.temp
 .vercel
+
+# Binarios: nunca deben versionarse (scripts/cloudflared.exe pesaba 54 MB y
+# viajaba en cada build de Docker hacia Render).
+*.exe
+
+# Archivos temporales de Office
+~$*

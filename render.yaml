@@ -1,34 +1,48 @@
+# Blueprint de Render.
+#
+# IMPORTANTE: los servicios actualmente en producción se crearon a mano desde el
+# panel de Render, NO desde este archivo. La configuración viva (runtime Docker,
+# variables de entorno, base de datos) está en el dashboard. Este blueprint se
+# mantiene alineado con esa realidad para poder recrear el entorno desde cero y
+# para documentar qué variables necesita cada servicio.
+#
+# La versión anterior mentía en dos puntos: declaraba los servicios con otro
+# nombre (`sir-cusco-*` en vez de `ecocusco-*`) y con runtime `python` + pip,
+# cuando el backend se construye con el Dockerfile de la raíz.
+
 services:
   - type: web
-    name: sir-cusco-api
-    runtime: python
-    rootDir: backend-python
-    buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    name: ecocusco-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    # El contexto es la raíz porque el Dockerfile copia `backend-python/`.
+    dockerContext: .
     healthCheckPath: /api/health
     envVars:
       - key: APP_ENV
         value: production
-      # Dominio exacto del frontend en Vercel. Debe definirse en el panel de
-      # Render con la URL real; el valor anterior apuntaba a localhost, que en
-      # produccion no autoriza a nadie.
+      # Cadena de conexión de la base PostgreSQL de Render.
+      - key: DATABASE_URL
+        sync: false
+      # Dominio exacto del frontend en Vercel. Se define en el panel: un valor
+      # fijo aquí (como el antiguo localhost) no autoriza a nadie en producción.
       - key: CORS_ORIGINS
         sync: false
-      # Acotado al proyecto: el patron anterior (https://.*\.vercel\.app) admitia
-      # CUALQUIER despliegue de Vercel y, como la API usa allow_credentials=True,
-      # eso permitia a un sitio de terceros llamarla con las credenciales del usuario.
-      # Ajusta el slug si el proyecto en Vercel se llama distinto.
+      # Acotado al proyecto. El patrón amplio anterior (https://.*\.vercel\.app)
+      # admitía CUALQUIER despliegue de Vercel y, como la API usa
+      # allow_credentials=True, permitía a un sitio de terceros llamarla con las
+      # credenciales del usuario.
       - key: CORS_ORIGIN_REGEX
         value: ^https://ecocusco(-[a-z0-9-]+)?\.vercel\.app$
-      # Generada por Render: evita que el despliegue arranque con la clave de
-      # desarrollo, que es publica porque esta en el repositorio.
+      # Generada por Render: evita arrancar con la clave de desarrollo, que es
+      # pública por estar en el repositorio.
       - key: JWT_SECRET
         generateValue: true
 
   - type: web
-    name: sir-cusco-geo
+    name: ecocusco-geo
     runtime: node
     rootDir: backend-typescript
-    buildCommand: npm install && npm run build
+    buildCommand: npm ci && npm run build
     startCommand: npm start
     healthCheckPath: /health

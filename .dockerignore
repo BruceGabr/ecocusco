@@ -1,0 +1,41 @@
+# Contexto de build del backend.
+#
+# El Dockerfile de la raíz solo necesita `backend-python/`. Sin este archivo,
+# Render subía el repositorio entero en cada despliegue (frontend, node_modules,
+# historial de git y un binario de 54 MB) para después descartarlo.
+
+.git
+.gitignore
+.vercelignore
+
+# Frontend: se despliega en Vercel, no entra en la imagen del backend.
+frontend/
+backend-typescript/
+node_modules/
+**/node_modules/
+**/dist/
+**/build/
+
+# Documentación y utilidades de desarrollo.
+docs/
+scripts/
+database/
+*.md
+!backend-python/**/*.md
+
+# Python local
+**/__pycache__/
+**/*.py[cod]
+**/.venv/
+**/.pytest_cache/
+backend-python/tests/
+
+# Entornos y secretos: las variables se definen en el panel de Render.
+.env
+.env.*
+**/.env
+**/.env.*
+
+# Configuración de otras plataformas
+.vercel/
+render.yaml
