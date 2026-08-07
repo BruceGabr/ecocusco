@@ -1,5 +1,26 @@
 # Changelog
 
+## 2026-08-07
+
+### Integración de funcionalidades pendientes
+
+- **Proximidad camión ↔ zona.** Nuevo `app/services/proximity.py` con distancia Haversine y avisos por rol: el ciudadano ve los camiones `En ruta` a menos de 500 m de su zona, el conductor las zonas cercanas a su camión, y los perfiles operativos todas las parejas. Los avisos viajan en `/api/operations/monitor` (campo `proximity_alerts` y mezclados en `notifications`) y en `/api/alerts`, que además recorta las alertas a la zona del ciudadano. Nuevo endpoint `POST /api/proximity/check` para consultar un punto y un radio concretos.
+- **Proximidad en la interfaz.** Panel "Camiones cercanos" en Dashboard y Rutas, y mapa con la zona del usuario marcada, el círculo de 500 m y los camiones cercanos destacados. Los camiones pasan de círculo a marcador propio con conductor, zona y estado en el globo.
+- **Operaciones masivas.** `POST /api/admin/bulk-action` (solo admin) borra varios registros de usuarios, zonas, horarios, camiones o mantenimiento en una petición, delegando en el borrado que ya tenía cada repositorio. En el panel, `DataTable` admite columna de selección y aparece una barra de acciones sobre el listado.
+- **Registro de recolección por conductor.** El endpoint existía y no tenía interfaz: ahora Rutas muestra el formulario, preseleccionado con el camión del conductor y su zona, y limita el listado de rutas a su propio camión.
+- **Próxima recolección.** Horarios muestra cuándo pasa el camión por la zona del usuario, con cuenta atrás. Nuevo `utils/nextCollection.ts`.
+- **Clasificación con datos reales.** La vista pasa de guía estática a incluir métricas de contenedores, la clasificación por zona derivada de los horarios (con el separador de tipos corregido: "No reciclable" ya no se parte en "No" y "reciclable"), el estado de llenado de cada contenedor y el reporte de problemas de clasificación.
+- **Registro y reportes.** Campo "Confirmar contraseña" con validación de coincidencia y conmutador de visibilidad; ficha de detalle del reporte.
+- **Estado del sistema.** Panel solo para administradores en el Dashboard con el origen de los datos, la versión de la API y los contadores operativos.
+
+### Datos ficticios retirados
+- El tablero de despacho inventaba horas fijas (08:00/09:00/10:00) y rotaba los estados con un contador cada 5 segundos; si no había datos, mostraba zonas y camiones escritos a mano. Ahora sale de `truck_assignments` y del avance real de cada ruta, y en su ausencia muestra estado vacío.
+- La simulación operativa (`DEMO_SIMULATION`) queda **apagada por defecto**: el monitor sumaba avance a las rutas, llenado a los contenedores y un desplazamiento fijo a los camiones en cada consulta, así que la pantalla mostraba cifras que no correspondían a ningún dato registrado.
+- El formulario de registro ya no ofrece una lista de zonas de respaldo escrita a mano; solo las que devuelve `GET /api/zones`.
+
+### Verificación
+`pytest` 95 pasados · `vitest` 43 pasados · `tsc --noEmit` sin errores · `vite build` correcto · flujos comprobados en la aplicación en ejecución (proximidad por rol, borrado masivo, registro de recolección, cuenta atrás).
+
 ## 2026-07-30
 
 ### Hitos completados

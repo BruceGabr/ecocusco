@@ -78,6 +78,7 @@ const leaflet = {
   circleMarker: createLayer,
   circle: createLayer,
   icon: () => ({}),
+  divIcon: () => ({}),
   Icon: { Default: IconDefault },
   Browser: { retina: false },
 };

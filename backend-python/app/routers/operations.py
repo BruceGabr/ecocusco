@@ -11,15 +11,21 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.constants import OPERATIONAL_ROLES
-from app.dependencies import require_current_user, require_role
+from app.constants import (
+    OPERATIONAL_ROLES,
+    PUBLIC_REGISTRATION_ROLE,
+    Role,
+    normalize_role,
+)
+from app.dependencies import optional_current_user, require_current_user, require_role
 from app.repositories.bootstrap import bootstrap
 from app.repositories.notifications import NOTIFICATION_TYPE_EVENT, create_notification
 from app.repositories.operations import update_container, update_route
-from app.schemas import OperationUpdateRequest
+from app.schemas import OperationUpdateRequest, ProximityCheckRequest
 from app.services.alerts import build_alerts
 from app.services.events import CONTAINER_UPDATE, EVENT_TITLE, ROUTE_UPDATE, build_event_message
 from app.services.monitor import build_monitor, geo_trucks
+from app.services.proximity import build_proximity_alerts, find_nearby_trucks
 
 
 router = APIRouter(tags=["operaciones"])
@@ -84,11 +90,55 @@ def update_operation(
 
 @router.get("/alerts")
 @router.get("/api/alerts")
-def get_alerts() -> dict[str, list[str]]:
+def get_alerts(current_user: dict[str, Any] | None = Depends(optional_current_user)) -> dict[str, list[str]]:
+    """Alertas operativas en texto plano, recortadas a la zona del ciudadano.
+
+    Sigue siendo accesible sin sesión porque el microservicio de geolocalización
+    la consume sin token; en ese caso devuelve la vista global.
+    """
     data = bootstrap()
     routes = data.get("routes", [])
     containers = data.get("containers", [])
-    return {"alerts": build_alerts(routes=routes, containers=containers)}
+
+    if current_user is not None:
+        role = normalize_role(str(current_user.get("role", PUBLIC_REGISTRATION_ROLE)))
+        citizen_zone = str(current_user.get("zone", "")).strip().lower()
+        if role == Role.CIUDADANO.value and citizen_zone:
+            routes = [
+                route for route in routes
+                if str(route.get("zone", "")).strip().lower() == citizen_zone
+            ]
+
+    alerts = build_alerts(routes=routes, containers=containers)
+    proximity = build_proximity_alerts(
+        user=current_user,
+        trucks=data.get("trucks", []),
+        zones=data.get("zones", []),
+        routes=routes,
+    )
+    alerts.extend(f"[Proximidad] {item['message']}" for item in proximity)
+    return {"alerts": alerts}
+
+
+@router.post("/api/proximity/check")
+def check_proximity(
+    payload: ProximityCheckRequest,
+    current_user: dict[str, Any] = Depends(require_current_user),
+) -> dict[str, Any]:
+    """Camiones en ruta dentro del radio pedido desde un punto concreto.
+
+    Se consulta con la posición de la zona del ciudadano (o la del propio
+    dispositivo) en lugar de esperar al siguiente ciclo del monitor.
+    """
+    data = bootstrap()
+    nearby = find_nearby_trucks(
+        latitude=payload.latitude,
+        longitude=payload.longitude,
+        radius_m=payload.radius_m,
+        trucks=data.get("trucks", []),
+        routes=data.get("routes", []),
+    )
+    return {"nearby": nearby, "radius_m": payload.radius_m}
 
 
 @router.get("/eta")

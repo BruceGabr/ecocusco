@@ -42,6 +42,14 @@ CONTAINER_FILL_WARNING = 70
 CONTAINER_FILL_CONSIDERED_FULL = 90
 ROUTE_PROGRESS_LOW = 40
 
+#: Radio en metros dentro del cual se avisa de un camión o una zona cercana.
+PROXIMITY_RADIUS_M = 500
+#: Por debajo de esta distancia el aviso sube de tono a "muy cercano".
+PROXIMITY_VERY_NEAR_M = 200
+#: Límites admitidos para el radio que puede pedir el cliente.
+PROXIMITY_RADIUS_MIN_M = 10
+PROXIMITY_RADIUS_MAX_M = 5000
+
 
 def normalize_role(role: str) -> str:
     """Devuelve un rol válido; cualquier valor desconocido cae a ciudadano."""

@@ -10,6 +10,8 @@ import { Toolbar, FilterSelect } from "../Toolbar";
 import { Pagination, paginate } from "../Pagination";
 import { Select } from "../Select";
 import { StatusBadge } from "../StatusBadge";
+import { BulkActionBar } from "../BulkActionBar";
+import { useBulkActions } from "../../hooks/useBulkActions";
 import { MAINTENANCE_STATUSES, toOptions } from "../../constants";
 import { collectErrors, errorProps, FieldErrors } from "../../utils/validation";
 
@@ -59,9 +61,23 @@ export function MaintenancePanel({ trucks, maintenance: initialMaintenance }: { 
   const currentPage = Math.min(page, pageCount);
   const visible = paginate(filtered, currentPage, PAGE_SIZE);
 
+  const bulk = useBulkActions({ resource: "maintenance", availableIds: visible.map(item => item.id) });
+
   function report(message: string, error = false) {
     setFeedback(message);
     setIsError(error);
+  }
+
+  async function deleteSelected() {
+    try {
+      const result = await bulk.deleteSelected();
+      setMaintenance(prev => prev.filter(item => !result.deleted.includes(item.id)));
+      report(result.failed.length
+        ? `${result.count} registro(s) eliminado(s); ${result.failed.length} no se pudo(ieron) eliminar`
+        : `${result.count} registro(s) de mantenimiento eliminado(s)`, result.failed.length > 0);
+    } catch (error) {
+      report(error instanceof Error ? error.message : 'No se pudieron eliminar los registros', true);
+    }
   }
 
   function openCreate() {
@@ -143,12 +159,21 @@ export function MaintenancePanel({ trucks, maintenance: initialMaintenance }: { 
 
       {feedback && <p className={`hint ${isError ? "error" : "success"}`} aria-live="polite">{feedback}</p>}
 
+      <BulkActionBar count={bulk.count} noun={{ singular: "registro", plural: "registros" }} busy={bulk.busy} onClear={bulk.clear} onDelete={deleteSelected} />
+
       <DataTable
         columns={columns}
         rows={visible}
         rowKey={item => item.id}
         caption="Lista de mantenimiento"
         emptyMessage="No hay registros de mantenimiento para este filtro"
+        selection={{
+          isSelected: item => bulk.isSelected(item.id),
+          onToggle: item => bulk.toggle(item.id),
+          allSelected: bulk.allSelected,
+          onToggleAll: bulk.toggleAll,
+          labelOf: item => `Seleccionar mantenimiento #${item.id}`,
+        }}
       />
       <Pagination page={currentPage} pageCount={pageCount} total={filtered.length} onChange={setPage} />
 

@@ -1283,6 +1283,152 @@ tbody tr:hover td {
 html[data-theme='dark'] tbody tr:hover td {
   background: var(--panel-alt);
 }
+/* Ficha de detalle: pares etiqueta/valor en dos columnas. */
+.detail-list {
+  display: grid;
+  grid-template-columns: minmax(120px, auto) 1fr;
+  gap: 8px 16px;
+  margin: 0;
+  font-size: 13px;
+}
+.detail-list dt {
+  color: var(--muted);
+}
+.detail-list dd {
+  margin: 0;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+/* El detalle es texto libre: en la tabla se recorta a una línea. */
+.cell-truncate {
+  display: block;
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Campo con acción incrustada (mostrar/ocultar contraseña). */
+.input-with-action {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.input-with-action input {
+  width: 100%;
+  padding-right: 42px;
+}
+.input-action {
+  position: absolute;
+  right: 8px;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm, 8px);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.input-action:hover {
+  color: var(--ink);
+}
+
+/* ========== PRÓXIMA RECOLECCIÓN ========== */
+.next-collection {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 20px;
+  border-radius: var(--radius);
+  background: var(--panel);
+  box-shadow: var(--shadow-md);
+}
+.next-collection svg {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  color: var(--green-400);
+}
+.next-collection-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+.next-collection-body strong {
+  font-size: 14px;
+}
+.next-collection-body span {
+  font-size: 12px;
+  color: var(--muted);
+}
+.next-collection-countdown {
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+}
+
+/* Celda de llenado: barra + porcentaje en la misma línea. */
+.fill-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 140px;
+}
+.fill-cell .progress-bar {
+  flex: 1;
+  height: 6px;
+  background: var(--sage-200);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+}
+.fill-cell .progress-bar-fill {
+  height: 100%;
+  border-radius: var(--radius-pill);
+  background: var(--green-400);
+}
+.tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+/* ========== SELECCIÓN MÚLTIPLE ========== */
+.bulk-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  margin-bottom: 12px;
+  border-radius: var(--radius);
+  background: var(--panel);
+  box-shadow: var(--shadow-md);
+}
+.bulk-bar .bulk-count {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.select-cell {
+  width: 40px;
+  text-align: center;
+}
+.select-cell input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--green-400);
+  cursor: pointer;
+}
+tr.row-selected {
+  background: var(--panel-alt);
+}
+
 .table-actions {
   display: flex;
   align-items: center;
@@ -2180,6 +2326,54 @@ html[data-theme='dark'] .tabs {
   border-radius: var(--radius);
   min-height: 420px;
   width: 100%;
+}
+
+/* Marcador de camión: glifo sobre disco, para distinguirlo de un vértice de
+   zona. El aro rojo marca los que tienen aviso de proximidad activo. */
+.map-truck-marker {
+  display: grid;
+  place-items: center;
+  font-size: 16px;
+  line-height: 1;
+  background: var(--panel);
+  border-radius: 50%;
+  box-shadow: var(--shadow-sm);
+}
+.map-truck-marker.nearby {
+  outline: 3px solid var(--state-danger);
+  outline-offset: -1px;
+}
+
+/* ========== PROXIMIDAD ========== */
+.proximity-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+.proximity-card {
+  background: var(--panel-alt);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.proximity-card.muy_cercano {
+  background: var(--state-danger-bg);
+  color: var(--state-danger);
+}
+.proximity-card .proximity-truck {
+  font-weight: 600;
+  font-size: 14px;
+}
+.proximity-card .proximity-detail {
+  font-size: 12px;
+  opacity: 0.85;
+}
+.proximity-card .proximity-distance {
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
 }
 
 /* ========== ALERTAS ========== */

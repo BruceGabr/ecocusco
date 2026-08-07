@@ -150,9 +150,36 @@ export type Bootstrap = {
     zone?: string | null;
     route?: string | null;
   }>;
+  proximity_alerts?: ProximityAlert[];
 };
+/** Gradación del aviso de proximidad. `muy_cercano` = a menos de 200 m. */
+export type ProximityTone = 'cercano' | 'muy_cercano';
+
+/**
+ * Aviso de que un camión y una zona están a menos del radio de proximidad.
+ * Llega dentro del monitoreo y también como respuesta de `/proximity/check`.
+ */
+export type ProximityAlert = {
+  id: string | number;
+  title?: string;
+  message?: string;
+  truck_code?: string;
+  driver?: string;
+  zone: string;
+  distance_m: number;
+  eta: string;
+  status?: string;
+  tone: ProximityTone;
+};
+
+export type ProximityCheckResponse = {
+  nearby: ProximityAlert[];
+  radius_m: number;
+};
+
 export type Monitor = Partial<Bootstrap> & {
   alerts?: string[];
+  proximity_alerts?: ProximityAlert[];
   performance?: {
     total_routes: number;
     delayed_routes: number;

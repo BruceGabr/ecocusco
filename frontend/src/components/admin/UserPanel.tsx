@@ -9,6 +9,8 @@ import { DataTable, Column } from "../DataTable";
 import { Toolbar, FilterSelect } from "../Toolbar";
 import { Pagination, paginate } from "../Pagination";
 import { Select } from "../Select";
+import { BulkActionBar } from "../BulkActionBar";
+import { useBulkActions } from "../../hooks/useBulkActions";
 import { collectErrors, errorProps, FieldErrors } from "../../utils/validation";
 
 const PAGE_SIZE = 8;
@@ -56,9 +58,28 @@ export function UserPanel({ users: initialUsers, zones = [] }: { users: Session[
   const currentPage = Math.min(page, pageCount);
   const visible = paginate(filtered, currentPage, PAGE_SIZE);
 
+  // Solo entran en la selección los usuarios con id: los recién creados en
+  // memoria pueden no tenerlo todavía y el backend no sabría a quién borrar.
+  const bulk = useBulkActions({
+    resource: "users",
+    availableIds: visible.map(user => user.id).filter((id): id is number => typeof id === "number"),
+  });
+
   function report(message: string, error = false) {
     setFeedback(message);
     setIsError(error);
+  }
+
+  async function deleteSelected() {
+    try {
+      const result = await bulk.deleteSelected();
+      setUsers(prev => prev.filter(user => !(user.id && result.deleted.includes(user.id))));
+      report(result.failed.length
+        ? `${result.count} usuario(s) eliminado(s); ${result.failed.length} no se pudo(ieron) eliminar`
+        : `${result.count} usuario(s) eliminado(s)`, result.failed.length > 0);
+    } catch (error) {
+      report(error instanceof Error ? error.message : 'No se pudieron eliminar los usuarios', true);
+    }
   }
 
   function openCreate() {
@@ -157,12 +178,22 @@ export function UserPanel({ users: initialUsers, zones = [] }: { users: Session[
 
       {feedback && <p className={`hint ${isError ? "error" : "success"}`} aria-live="polite">{feedback}</p>}
 
+      <BulkActionBar count={bulk.count} noun={{ singular: "usuario", plural: "usuarios" }} busy={bulk.busy} onClear={bulk.clear} onDelete={deleteSelected} />
+
       <DataTable
         columns={columns}
         rows={visible}
         rowKey={(user, index) => `user-${user.id ?? user.email}-${index}`}
         caption="Lista de usuarios"
         emptyMessage="No hay usuarios que coincidan con el filtro"
+        selection={{
+          isSelected: user => Boolean(user.id) && bulk.isSelected(user.id as number),
+          onToggle: user => { if (user.id) bulk.toggle(user.id); },
+          allSelected: bulk.allSelected,
+          onToggleAll: bulk.toggleAll,
+          labelOf: user => `Seleccionar usuario ${user.name}`,
+          isDisabled: user => !user.id,
+        }}
       />
       <Pagination page={currentPage} pageCount={pageCount} total={filtered.length} onChange={setPage} />
 

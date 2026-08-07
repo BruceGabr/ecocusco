@@ -27,7 +27,16 @@ const MAP_COLORS = {
   critical: '#c94735',
   warning: '#f5b942',
   normal: '#0f8b8d',
+  /** Zona propia del usuario y su radio de proximidad. */
+  focus: '#2563eb',
 } as const;
+
+/**
+ * Radio en metros del círculo de proximidad que se dibuja alrededor de la zona
+ * del usuario. Debe coincidir con `PROXIMITY_RADIUS_M` del backend: si no, el
+ * mapa promete una cobertura distinta de la que dispara los avisos.
+ */
+const PROXIMITY_RADIUS_M = 500;
 
 /** Puntaje a partir del cual una zona se dibuja como crítica. */
 const CRITICAL_PRIORITY_SCORE = 5;
@@ -48,22 +57,51 @@ type PrioritizedZone = {
   longitude?: number;
 };
 
+/** Marcador de camión: un glifo, no un círculo más entre los de zona. */
+function truckIcon(isNearby: boolean): L.DivIcon {
+  return L.divIcon({
+    className: `map-truck-marker${isNearby ? ' nearby' : ''}`,
+    html: '<span aria-hidden="true">🚛</span>',
+    iconSize: [28, 28],
+    iconAnchor: [14, 14],
+    popupAnchor: [0, -14],
+  });
+}
+
 export function MapView({
   zones,
   trucks,
   routes,
   prioritizedZones,
+  focusZone,
+  nearbyTruckCodes = [],
 }: {
   zones: Zone[];
   trucks: Truck[];
   routes: Route[];
   prioritizedZones: PrioritizedZone[];
+  /** Zona del usuario: se marca y se rodea con el radio de proximidad. */
+  focusZone?: Zone;
+  /** Códigos de camión con aviso de proximidad activo: se pintan en rojo. */
+  nearbyTruckCodes?: string[];
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
+  const nearbySet = useMemo(
+    () => new Set(nearbyTruckCodes.map((code) => String(code).toLowerCase())),
+    [nearbyTruckCodes],
+  );
   const signature = useMemo(
-    () => JSON.stringify({ zones, trucks, routes, prioritizedZones }),
-    [zones, trucks, routes, prioritizedZones],
+    () =>
+      JSON.stringify({
+        zones,
+        trucks,
+        routes,
+        prioritizedZones,
+        focusZone,
+        nearbyTruckCodes,
+      }),
+    [zones, trucks, routes, prioritizedZones, focusZone, nearbyTruckCodes],
   );
 
   useEffect(() => {
@@ -103,15 +141,43 @@ export function MapView({
         .addTo(layer);
     });
 
-    trucks.forEach((truck) =>
-      L.circleMarker([truck.latitude, truck.longitude], {
-        radius: 8,
-        color: MAP_COLORS.warning,
-        fillOpacity: 0.9,
+    // La zona propia se dibuja antes que los camiones para que su círculo no
+    // tape los marcadores.
+    if (focusZone) {
+      L.circleMarker([focusZone.latitude, focusZone.longitude], {
+        radius: 10,
+        color: MAP_COLORS.focus,
+        fillColor: MAP_COLORS.focus,
+        fillOpacity: 0.95,
+        weight: 3,
       })
-        .bindPopup(`${truck.code} - ${truck.status}`)
-        .addTo(layer),
-    );
+        .bindPopup(`Tu zona: ${focusZone.name}`)
+        .addTo(layer);
+      L.circle([focusZone.latitude, focusZone.longitude], {
+        radius: PROXIMITY_RADIUS_M,
+        color: MAP_COLORS.focus,
+        fillColor: MAP_COLORS.focus,
+        fillOpacity: 0.12,
+        weight: 2,
+        dashArray: '6 4',
+      })
+        .bindPopup(`Radio de proximidad (${PROXIMITY_RADIUS_M} m)`)
+        .addTo(layer);
+    }
+
+    trucks.forEach((truck) => {
+      const isNearby = nearbySet.has(String(truck.code ?? '').toLowerCase());
+      const detail = [truck.driver, truck.zone, truck.status]
+        .filter(Boolean)
+        .join(' · ');
+      L.marker([truck.latitude, truck.longitude], { icon: truckIcon(isNearby) })
+        .bindPopup(
+          `<strong>${truck.code}</strong>${detail ? `<br>${detail}` : ''}${
+            isNearby ? '<br>Cerca de tu zona' : ''
+          }`,
+        )
+        .addTo(layer);
+    });
 
     routes.forEach((route) =>
       L.circle([route.latitude, route.longitude], {
@@ -127,7 +193,7 @@ export function MapView({
     return () => {
       layer.remove();
     };
-  }, [signature]);
+  }, [signature, nearbySet]);
 
   return <div className="map-wrapper" ref={ref} />;
 }

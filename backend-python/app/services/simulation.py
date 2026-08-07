@@ -54,17 +54,31 @@ def simulate_container_fill(containers: list[dict[str, Any]]) -> list[dict[str, 
     return simulated
 
 
-def simulate_truck_positions(routes: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    simulated: list[dict[str, Any]] = []
-    for route in routes:
-        latitude = float(route.get("latitude", 0.0)) + TRUCK_LATITUDE_STEP
-        longitude = float(route.get("longitude", 0.0)) + TRUCK_LONGITUDE_STEP
-        simulated.append({
+def truck_positions(routes: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Posición de cada camión tal y como está registrada en su ruta.
+
+    Sin desplazamiento inventado: es el dato real que se guarda.
+    """
+    return [
+        {
             "code": route.get("truck"),
             "zone": route.get("zone"),
-            "latitude": latitude,
-            "longitude": longitude,
+            "latitude": float(route.get("latitude", 0.0)),
+            "longitude": float(route.get("longitude", 0.0)),
             "progress": int(route.get("progress", 0)),
             "etaMinutes": eta_minutes(route),
-        })
-    return simulated
+        }
+        for route in routes
+    ]
+
+
+def simulate_truck_positions(routes: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Igual que `truck_positions`, con un desplazamiento fijo para la demo."""
+    return [
+        {
+            **position,
+            "latitude": position["latitude"] + TRUCK_LATITUDE_STEP,
+            "longitude": position["longitude"] + TRUCK_LONGITUDE_STEP,
+        }
+        for position in truck_positions(routes)
+    ]

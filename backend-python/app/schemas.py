@@ -8,7 +8,12 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
-from app.constants import PUBLIC_REGISTRATION_ROLE
+from app.constants import (
+    PROXIMITY_RADIUS_M,
+    PROXIMITY_RADIUS_MAX_M,
+    PROXIMITY_RADIUS_MIN_M,
+    PUBLIC_REGISTRATION_ROLE,
+)
 
 #: Longitudes admitidas para una contraseña.
 PASSWORD_MIN_LENGTH = 8
@@ -136,3 +141,25 @@ class CollectionCreate(BaseModel):
     zone_id: int
     kg: int = Field(default=0, ge=0)
     status: str = Field(default="Confirmada", min_length=2, max_length=60)
+
+
+class ProximityCheckRequest(BaseModel):
+    """Punto desde el que se consulta qué camiones hay cerca."""
+
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
+    radius_m: int = Field(
+        default=PROXIMITY_RADIUS_M,
+        ge=PROXIMITY_RADIUS_MIN_M,
+        le=PROXIMITY_RADIUS_MAX_M,
+    )
+
+
+class BulkActionRequest(BaseModel):
+    """Acción masiva sobre un catálogo del panel de administración."""
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    resource: str = Field(min_length=1, max_length=40)
+    action: str = Field(min_length=1, max_length=20)
+    ids: list[int] = Field(min_length=1)

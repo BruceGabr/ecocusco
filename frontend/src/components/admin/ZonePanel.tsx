@@ -10,6 +10,8 @@ import { Toolbar, FilterSelect } from "../Toolbar";
 import { Pagination, paginate } from "../Pagination";
 import { Select } from "../Select";
 import { StatusBadge } from "../StatusBadge";
+import { BulkActionBar } from "../BulkActionBar";
+import { useBulkActions } from "../../hooks/useBulkActions";
 import { CRITICALITY_LEVELS, toOptions } from "../../constants";
 import { collectErrors, errorProps, FieldErrors } from "../../utils/validation";
 
@@ -48,9 +50,24 @@ export function ZonePanel({ zones: initialZones }: { zones: Zone[] }) {
   const currentPage = Math.min(page, pageCount);
   const visible = paginate(filtered, currentPage, PAGE_SIZE);
 
+  // La selección abarca solo la página visible: es lo que el usuario ve marcado.
+  const bulk = useBulkActions({ resource: "zones", availableIds: visible.map(zone => zone.id) });
+
   function report(message: string, error = false) {
     setFeedback(message);
     setIsError(error);
+  }
+
+  async function deleteSelected() {
+    try {
+      const result = await bulk.deleteSelected();
+      setZones(prev => prev.filter(zone => !result.deleted.includes(zone.id)));
+      report(result.failed.length
+        ? `${result.count} zona(s) eliminada(s); ${result.failed.length} no se pudo(ieron) eliminar`
+        : `${result.count} zona(s) eliminada(s)`, result.failed.length > 0);
+    } catch (error) {
+      report(error instanceof Error ? error.message : 'No se pudieron eliminar las zonas', true);
+    }
   }
 
   function openCreate() {
@@ -130,12 +147,21 @@ export function ZonePanel({ zones: initialZones }: { zones: Zone[] }) {
 
       {feedback && <p className={`hint ${isError ? "error" : "success"}`} aria-live="polite">{feedback}</p>}
 
+      <BulkActionBar count={bulk.count} noun={{ singular: "zona", plural: "zonas" }} busy={bulk.busy} onClear={bulk.clear} onDelete={deleteSelected} />
+
       <DataTable
         columns={columns}
         rows={visible}
         rowKey={zone => zone.id}
         caption="Lista de zonas"
         emptyMessage="No hay zonas que coincidan con el filtro"
+        selection={{
+          isSelected: zone => bulk.isSelected(zone.id),
+          onToggle: zone => bulk.toggle(zone.id),
+          allSelected: bulk.allSelected,
+          onToggleAll: bulk.toggleAll,
+          labelOf: zone => `Seleccionar zona ${zone.name}`,
+        }}
       />
       <Pagination page={currentPage} pageCount={pageCount} total={filtered.length} onChange={setPage} />
 

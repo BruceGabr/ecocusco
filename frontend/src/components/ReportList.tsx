@@ -5,6 +5,8 @@ import { Toolbar, FilterSelect } from "./Toolbar";
 import { toOptions } from "../constants";
 import { Pagination, paginate } from "./Pagination";
 import { StatusBadge } from "./StatusBadge";
+import { Modal } from "./Modal";
+import { Button } from "./Button";
 
 const PAGE_SIZE = 8;
 
@@ -14,6 +16,9 @@ export function ReportList({ reports, trucks = [], showDriverFilter = false, sho
   const [driverFilter, setDriverFilter] = useState("");
   const [resolvingId, setResolvingId] = useState<number | null>(null);
   const [page, setPage] = useState(1);
+  // El detalle es texto libre y en la tabla se corta: la ficha lo muestra
+  // entero sin obligar a ensanchar la columna.
+  const [detailReport, setDetailReport] = useState<Report | null>(null);
 
   const driverByZone = useMemo(() => {
     const map: Record<string, string> = {};
@@ -58,21 +63,18 @@ export function ReportList({ reports, trucks = [], showDriverFilter = false, sho
       header: "Conductor",
       render: report => driverByZone[String(report.zone ?? "").toLowerCase()] ?? "Sin conductor asignado",
     },
-    { key: "detail", header: "Detalle", render: report => report.detail },
+    { key: "detail", header: "Detalle", render: report => <span className="cell-truncate">{report.detail}</span> },
     { key: "status", header: "Estado", render: report => <StatusBadge status={report.status} /> },
-  ];
-
-  if (showResolve && onResolveReport) {
-    columns.push({
+    {
       key: "actions",
       header: "",
       align: "right",
-      render: report =>
-        report.status === "Resuelto" ? null : (
-          <div className="table-actions">
-            <button
-              type="button"
-              className="btn sm"
+      render: report => (
+        <div className="table-actions">
+          <Button size="sm" onClick={() => setDetailReport(report)}>Ver detalle</Button>
+          {showResolve && onResolveReport && report.status !== "Resuelto" && (
+            <Button
+              size="sm"
               onClick={async () => {
                 setResolvingId(report.id);
                 try {
@@ -84,11 +86,12 @@ export function ReportList({ reports, trucks = [], showDriverFilter = false, sho
               disabled={resolvingId === report.id}
             >
               {resolvingId === report.id ? "Resolviendo..." : "Marcar resuelto"}
-            </button>
-          </div>
-        ),
-    });
-  }
+            </Button>
+          )}
+        </div>
+      ),
+    },
+  ];
 
   return (
     <div className="listing">
@@ -113,6 +116,29 @@ export function ReportList({ reports, trucks = [], showDriverFilter = false, sho
       />
 
       <Pagination page={currentPage} pageCount={pageCount} total={filtered.length} onChange={setPage} />
+
+      <Modal
+        open={detailReport !== null}
+        title={detailReport ? `Reporte #${detailReport.id}` : ""}
+        onClose={() => setDetailReport(null)}
+      >
+        {detailReport && (
+          <dl className="detail-list">
+            <dt>Tipo</dt>
+            <dd>{detailReport.type}</dd>
+            <dt>Estado</dt>
+            <dd><StatusBadge status={detailReport.status} /></dd>
+            <dt>Zona</dt>
+            <dd>{detailReport.zone}</dd>
+            <dt>Ciudadano</dt>
+            <dd>{detailReport.citizen}</dd>
+            <dt>Conductor asignado</dt>
+            <dd>{driverByZone[String(detailReport.zone ?? "").toLowerCase()] ?? "Sin conductor asignado"}</dd>
+            <dt>Detalle</dt>
+            <dd>{detailReport.detail}</dd>
+          </dl>
+        )}
+      </Modal>
     </div>
   );
 }

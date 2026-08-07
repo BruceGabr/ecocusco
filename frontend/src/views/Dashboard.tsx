@@ -1,18 +1,31 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { Bootstrap, Monitor } from "../types";
+import React, { useMemo } from "react";
+import { Bootstrap, Monitor, Session } from "../types";
 import { Icon, IconName } from "../components/Icon";
 import { MetricCard, MetricTone } from "../components/MetricCard";
 import { Panel } from "../components/Panel";
+import { EmptyState } from "../components/EmptyState";
 import { MapView } from "../components/MapView";
+import { StatusBadge } from "../components/StatusBadge";
+import { ProximityPanel } from "../components/ProximityPanel";
+import { useHealth } from "../hooks/useHealth";
+import { CONTAINER_FILL_CRITICAL } from "../constants";
 
-export function Dashboard({ data, monitor }: { data: Bootstrap; monitor: Monitor }) {
-  const [tick, setTick] = useState(0);
-  useEffect(() => {
-    const interval = window.setInterval(() => setTick(value => value + 1), 5000);
-    return () => window.clearInterval(interval);
-  }, []);
-
+export function Dashboard({ data, monitor, session }: { data: Bootstrap; monitor: Monitor; session: Session }) {
   const effectiveData = { ...data, ...monitor } as Bootstrap;
+  const proximityAlerts = monitor.proximity_alerts ?? [];
+  const isAdmin = session.role === "admin";
+  const health = useHealth(isAdmin);
+
+  // Zona del usuario: se resalta en el mapa junto al radio de proximidad.
+  const focusZone = useMemo(
+    () => data.zones.find(zone => zone.name.trim().toLowerCase() === String(session.zone ?? "").trim().toLowerCase()),
+    [data.zones, session.zone]
+  );
+
+  const nearbyTruckCodes = useMemo(
+    () => proximityAlerts.map(alert => alert.truck_code).filter(Boolean) as string[],
+    [proximityAlerts]
+  );
 
   type MetricEntry = { value: React.ReactNode; label: string; icon: IconName; tone: MetricTone };
   const metrics: MetricEntry[] = [
@@ -27,42 +40,35 @@ export function Dashboard({ data, monitor }: { data: Bootstrap; monitor: Monitor
     ] : [])
   ];
 
+  /**
+   * Tablero de despacho.
+   *
+   * Sale de las asignaciones que calcula el backend y del avance real de cada
+   * ruta. Antes se inventaba: horas fijas 08:00/09:00/10:00, estados rotando
+   * con un contador cada 5 segundos y, si no había datos, una secuencia con
+   * zonas y camiones escritos a mano. Se veía movimiento donde no lo había.
+   */
   const dispatchBoard = useMemo(() => {
-    if (monitor.truck_assignments?.length) {
-      return monitor.truck_assignments.slice(0, 3).map((assignment, index) => ({
-        hour: `0${8 + index}:00`,
+    const routes = effectiveData.optimized_routes ?? effectiveData.routes ?? [];
+    const routeById = new Map(routes.map(route => [route.id, route]));
+    return (monitor.truck_assignments ?? []).map(assignment => {
+      const route = routeById.get(assignment.route_id);
+      const progress = route?.progress ?? 0;
+      const status = progress >= 100 ? "Completado" : progress > 0 ? "En curso" : "Programado";
+      return {
+        key: `${assignment.route_id}-${assignment.truck_code}`,
         zone: assignment.zone,
         truck: assignment.truck_code,
-        action: assignment.action ?? `Atender ${assignment.zone}`,
-        status: index === tick % 3 ? "En curso" : index < tick % 3 ? "Completado" : "Programado"
-      }));
-    }
-
-    const prioritized = [...(effectiveData.prioritized_zones ?? [])].sort((a, b) => b.priority_score - a.priority_score);
-    const routes = [...(effectiveData.optimized_routes ?? effectiveData.routes ?? [])].sort((a, b) => {
-      const aUrgency = /retraso/i.test(a.delay) || a.progress < 40 ? 1 : 0;
-      const bUrgency = /retraso/i.test(b.delay) || b.progress < 40 ? 1 : 0;
-      return bUrgency - aUrgency || b.progress - a.progress;
+        action: assignment.action,
+        eta: assignment.eta,
+        priority: assignment.priority,
+        progress,
+        status
+      };
     });
+  }, [monitor.truck_assignments, effectiveData.optimized_routes, effectiveData.routes]);
 
-    const sequence = [
-      { hour: "08:00", zone: prioritized[0]?.name ?? "Centro Historico", truck: routes[0]?.truck ?? "C-02", action: "Despacho inicial" },
-      { hour: "09:00", zone: prioritized[1]?.name ?? "Wanchaq", truck: routes[1]?.truck ?? "C-01", action: "Revisión de contenedores" },
-      { hour: "10:00", zone: prioritized[2]?.name ?? "Santiago", truck: routes[2]?.truck ?? "C-03", action: "Atención de reporte" }
-    ];
-
-    return sequence.map((step, index) => ({
-      ...step,
-      status: index === tick % 3 ? "En curso" : index < tick % 3 ? "Completado" : "Programado"
-    }));
-  }, [monitor.truck_assignments, effectiveData.prioritized_zones, effectiveData.optimized_routes, effectiveData.routes, tick]);
-
-  const alerts = (monitor.alerts ?? []).map((alert, index) => ({
-    id: index,
-    title: alert,
-    time: "Ahora",
-    status: alert.toLowerCase().includes("retraso") ? "pendiente" : "activo"
-  }));
+  const alerts = monitor.alerts ?? [];
 
   return (
     <>
@@ -73,23 +79,39 @@ export function Dashboard({ data, monitor }: { data: Bootstrap; monitor: Monitor
       </div>
 
       <div className="dashboard-sections">
-        <Panel icon={<Icon name="map" />} title="Mapa Operativo" className="full-width">
-          <MapView zones={data.zones} trucks={effectiveData.trucks} routes={effectiveData.optimized_routes ?? effectiveData.routes} prioritizedZones={effectiveData.prioritized_zones ?? []} />
+        <Panel icon={<Icon name="truck" />} title="Camiones cercanos" className="full-width">
+          <ProximityPanel alerts={proximityAlerts} role={session.role} zone={session.zone} />
         </Panel>
+
+        <Panel icon={<Icon name="map" />} title="Mapa Operativo" className="full-width">
+          <MapView
+            zones={data.zones}
+            trucks={effectiveData.trucks}
+            routes={effectiveData.optimized_routes ?? effectiveData.routes}
+            prioritizedZones={effectiveData.prioritized_zones ?? []}
+            focusZone={focusZone}
+            nearbyTruckCodes={nearbyTruckCodes}
+          />
+        </Panel>
+
         <Panel icon={<Icon name="truck" />} title="Tablero de despacho">
-          <div className="dispatch-board">
-            {dispatchBoard.map(step => (
-              <div className="dispatch-card" key={step.hour}>
-                <h4>{step.hour}</h4>
-                <div className="dispatch-zone">{step.zone}</div>
-                <div style={{fontSize:13,color:'var(--muted)'}}>{step.action} · {step.truck}</div>
-                <div className="dispatch-progress">
-                  <div className="progress-bar"><div className="progress-bar-fill" style={{width: step.status === 'Completado' ? '100%' : step.status === 'En curso' ? '50%' : '10%'}}></div></div>
-                  <span className="dispatch-status" style={{color: step.status === 'Completado' ? 'var(--state-success)' : step.status === 'En curso' ? 'var(--state-pending)' : 'var(--muted-light)'}}>{step.status}</span>
+          {dispatchBoard.length === 0 ? (
+            <EmptyState message="No hay asignaciones de despacho activas." />
+          ) : (
+            <div className="dispatch-board">
+              {dispatchBoard.map(step => (
+                <div className="dispatch-card" key={step.key}>
+                  <h4>{step.truck} · {step.zone}</h4>
+                  <div className="dispatch-zone">{step.action}</div>
+                  <div className="dispatch-zone">ETA {step.eta} · Prioridad {step.priority}</div>
+                  <div className="dispatch-progress">
+                    <div className="progress-bar"><div className="progress-bar-fill" style={{ width: `${step.progress}%` }}></div></div>
+                    <StatusBadge status={step.status} />
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </Panel>
 
         <Panel icon={<Icon name="alert" />} title="Plan de intervención">
@@ -105,22 +127,52 @@ export function Dashboard({ data, monitor }: { data: Bootstrap; monitor: Monitor
               </div>
             ))}
             {(effectiveData.intervention_plan ?? []).length === 0 && (
-              <p style={{ color: "var(--muted)", padding: "12px 0", fontSize:13 }}>No hay acciones de intervención prioritarias definidas.</p>
+              <EmptyState message="No hay acciones de intervención prioritarias definidas." />
             )}
           </div>
         </Panel>
 
+        {isAdmin && (
+          <Panel icon={<Icon name="dashboard" />} title="Estado del sistema">
+            <dl className="detail-list">
+              <dt>Origen de los datos</dt>
+              <dd>
+                {health
+                  ? health.mode === "production"
+                    ? `Producción · ${health.database}`
+                    : `Demostración · ${health.database}`
+                  : "No se pudo consultar el estado del servicio"}
+              </dd>
+              <dt>Versión de la API</dt>
+              <dd>{health?.version ?? "—"}</dd>
+              <dt>Catálogos</dt>
+              <dd>
+                {data.users?.length ?? 0} usuarios · {data.zones.length} zonas · {data.trucks.length} camiones
+              </dd>
+              <dt>Incidencias abiertas</dt>
+              <dd>{effectiveData.analytics.open_reports}</dd>
+              <dt>Rutas con retraso</dt>
+              <dd>{monitor.performance?.delayed_routes ?? 0}</dd>
+              <dt>Contenedores críticos</dt>
+              <dd>
+                {(effectiveData.containers ?? []).filter(container => container.fill_level >= CONTAINER_FILL_CRITICAL).length}
+                {" "}con llenado ≥ {CONTAINER_FILL_CRITICAL}%
+              </dd>
+            </dl>
+          </Panel>
+        )}
+
         <Panel icon={<Icon name="bell" />} title="Alertas Activas">
           <div className="alert-list">
-            {alerts.map(alert => (
-              <div className={`alert-item alert-${alert.status}`} key={alert.id}>
+            {alerts.map((alert, index) => (
+              <div className={`alert-item ${/retraso|pendiente/i.test(alert) ? "alert-pendiente" : "alert-activo"}`} key={`${alert}-${index}`}>
                 <Icon name="bell" />
                 <div className="alert-message">
-                  <div>{alert.title}</div>
+                  <div>{alert}</div>
                 </div>
-                <span className="alert-time">{alert.time}</span>
               </div>
             ))}
+            {alerts.length === 0 && <EmptyState message="No hay alertas operativas activas." />}
           </div>
         </Panel>
       </div>

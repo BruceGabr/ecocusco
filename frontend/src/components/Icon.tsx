@@ -23,6 +23,8 @@ import {
   BottleWine,
   Package,
   Activity,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 
 import React from 'react';
@@ -53,7 +55,9 @@ export type IconName =
   | 'recycle'
   | 'plastic'
   | 'glass'
-  | 'paper';
+  | 'paper'
+  | 'eye'
+  | 'eyeOff';
 const icons = {
   dashboard: LayoutDashboard,
   schedules: Clock3,
@@ -81,6 +85,8 @@ const icons = {
   plastic: Recycle,
   glass: BottleWine,
   paper: FileText,
+  eye: Eye,
+  eyeOff: EyeOff,
 };
 
 export function Icon({ name, size = 20 }: { name: IconName; size?: number }) {

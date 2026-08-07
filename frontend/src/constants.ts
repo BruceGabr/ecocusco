@@ -65,6 +65,12 @@ export const REPORT_TYPES = [
 ] as const;
 export const CRITICALITY_LEVELS = ['Alta', 'Media', 'Baja'] as const;
 
+/**
+ * Llenado a partir del cual un contenedor se considera crítico. Réplica de
+ * `CONTAINER_FILL_CRITICAL` del backend, que es quien emite la alerta.
+ */
+export const CONTAINER_FILL_CRITICAL = 85;
+
 /** Convierte una lista de textos en opciones para el componente Select. */
 export const toOptions = (values: readonly string[]) =>
   values.map((value) => ({ value, label: value }));

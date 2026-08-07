@@ -10,6 +10,8 @@ import { Toolbar, FilterSelect } from "../Toolbar";
 import { Pagination, paginate } from "../Pagination";
 import { Select } from "../Select";
 import { StatusBadge } from "../StatusBadge";
+import { BulkActionBar } from "../BulkActionBar";
+import { useBulkActions } from "../../hooks/useBulkActions";
 import { TRUCK_STATUSES, toOptions } from "../../constants";
 import { collectErrors, errorProps, FieldErrors } from "../../utils/validation";
 
@@ -58,9 +60,23 @@ export function TruckPanel({ zones, trucks: initialTrucks }: { zones: Zone[]; tr
   const currentPage = Math.min(page, pageCount);
   const visible = paginate(filtered, currentPage, PAGE_SIZE);
 
+  const bulk = useBulkActions({ resource: "trucks", availableIds: visible.map(truck => truck.id) });
+
   function report(message: string, error = false) {
     setFeedback(message);
     setIsError(error);
+  }
+
+  async function deleteSelected() {
+    try {
+      const result = await bulk.deleteSelected();
+      setTrucks(prev => prev.filter(truck => !result.deleted.includes(truck.id)));
+      report(result.failed.length
+        ? `${result.count} camión(es) eliminado(s); ${result.failed.length} no se pudo(ieron) eliminar`
+        : `${result.count} camión(es) eliminado(s)`, result.failed.length > 0);
+    } catch (error) {
+      report(error instanceof Error ? error.message : 'No se pudieron eliminar los camiones', true);
+    }
   }
 
   function openCreate() {
@@ -152,12 +168,21 @@ export function TruckPanel({ zones, trucks: initialTrucks }: { zones: Zone[]; tr
 
       {feedback && <p className={`hint ${isError ? "error" : "success"}`} aria-live="polite">{feedback}</p>}
 
+      <BulkActionBar count={bulk.count} noun={{ singular: "camión", plural: "camiones" }} busy={bulk.busy} onClear={bulk.clear} onDelete={deleteSelected} />
+
       <DataTable
         columns={columns}
         rows={visible}
         rowKey={(truck, index) => `truck-${truck.id}-${index}`}
         caption="Lista de camiones"
         emptyMessage="No hay camiones que coincidan con el filtro"
+        selection={{
+          isSelected: truck => bulk.isSelected(truck.id),
+          onToggle: truck => bulk.toggle(truck.id),
+          allSelected: bulk.allSelected,
+          onToggleAll: bulk.toggleAll,
+          labelOf: truck => `Seleccionar camión ${truck.code}`,
+        }}
       />
       <Pagination page={currentPage} pageCount={pageCount} total={filtered.length} onChange={setPage} />
 

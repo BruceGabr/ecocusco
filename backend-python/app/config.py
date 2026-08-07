@@ -61,6 +61,21 @@ def app_env() -> str:
     return os.getenv("APP_ENV", "development").strip().lower()
 
 
+def demo_simulation_enabled() -> bool:
+    """Si el monitoreo debe inventar movimiento operativo.
+
+    Está apagado: el monitor devuelve el estado tal y como está guardado. Con
+    la simulación encendida, cada consulta sumaba avance a las rutas, llenado a
+    los contenedores y un desplazamiento fijo a los camiones, así que la
+    pantalla mostraba cifras que no correspondían a ningún dato registrado.
+
+    Solo tiene sentido activarla (`DEMO_SIMULATION=1`) para una demostración
+    sin base de datos, y lo que se muestre entonces debe presentarse como
+    simulado.
+    """
+    return os.getenv("DEMO_SIMULATION", "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 def is_deployed() -> bool:
     """Se considera desplegado si hay base de datos o el entorno no es local."""
     return bool(os.getenv("DATABASE_URL", "").strip()) or app_env() not in _LOCAL_ENVIRONMENTS

@@ -395,13 +395,31 @@ function Content(props: {
     onCreateCollection,
     onConfirmCollection,
   } = props;
-  if (view === 'dashboard') return <Dashboard data={data} monitor={monitor} />;
+  if (view === 'dashboard')
+    return <Dashboard data={data} monitor={monitor} session={session} />;
   if (view === 'admin')
     return <Admin data={data} onOperationUpdate={onOperationUpdate} />;
-  if (view === 'schedules') return <Schedules schedules={data.schedules} />;
+  if (view === 'schedules')
+    return <Schedules schedules={data.schedules} zone={session.zone} />;
   if (view === 'reports') return <Reports {...props} />;
-  if (view === 'waste') return <Waste />;
-  if (view === 'routes') return <Routes data={data} monitor={monitor} />;
+  if (view === 'waste')
+    return (
+      <Waste
+        data={data}
+        monitor={monitor}
+        session={session}
+        onCreateReport={props.onCreateReport}
+      />
+    );
+  if (view === 'routes')
+    return (
+      <Routes
+        data={data}
+        monitor={monitor}
+        session={session}
+        onCreateCollection={onCreateCollection}
+      />
+    );
   // La vista de Operaciones estaba importada pero nunca se renderizaba: no
   // existía 'operations' en el tipo View, así que era código inalcanzable.
   if (view === 'operations')

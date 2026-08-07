@@ -6,7 +6,11 @@ import { Select } from "../components/Select";
 import { collectErrors, errorProps, FieldErrors } from "../utils/validation";
 
 export function AuthView({ zones, onLogin, message }: { zones: Zone[]; onLogin: (credentials: Credentials) => Promise<void>; message: string }) {
-  const fallbackZones = zones.length ? zones.map(zone => zone.name) : ["Centro Historico", "Wanchaq", "San Sebastian", "San Jeronimo", "Santiago"];
+  // Las zonas salen siempre de `GET /api/zones`. Antes había una lista de
+  // respaldo escrita a mano: si el catálogo cambiaba o el backend no
+  // respondía, el formulario ofrecía zonas que podían no existir y el registro
+  // quedaba asociado a una zona inventada.
+  const zoneOptions = zones.map(zone => ({ value: zone.name, label: zone.name }));
   const [mode, setMode] = useState<"login" | "register" | "forgot">("login");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [feedback, setFeedback] = useState("");
@@ -17,7 +21,10 @@ export function AuthView({ zones, onLogin, message }: { zones: Zone[]; onLogin: 
   const [errors, setErrors] = useState<FieldErrors>({});
   // La zona no viaja en el FormData: el Select propio no es un control nativo,
   // así que su valor vive en el estado del componente.
-  const [zone, setZone] = useState(fallbackZones[0] ?? "Centro Historico");
+  const [zone, setZone] = useState("");
+  // La contraseña se escribe a ciegas y hay un mínimo de 8 caracteres: poder
+  // verla evita el ciclo de fallar el acceso por una errata.
+  const [showPassword, setShowPassword] = useState(false);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -38,6 +45,17 @@ export function AuthView({ zones, onLogin, message }: { zones: Zone[]; onLogin: 
     setLocalError("");
     try {
       if (mode === "register") {
+        // La confirmación se comprueba aquí y no en el backend: es un error de
+        // tecleo del formulario, no una regla del dominio.
+        const confirmation = String(form.get("password-confirm") || "");
+        if (password !== confirmation) {
+          setErrors({ "password-confirm": "Las contraseñas no coinciden" });
+          return;
+        }
+        if (!zone) {
+          setLocalError("Selecciona la zona en la que vives.");
+          return;
+        }
         // El rol no se envía: el registro público siempre crea un ciudadano y
         // el backend ignora lo que llegue en este campo.
         const created = await request<{ token?: string; user?: Session }>('/auth/register', { method: 'POST', body: JSON.stringify({ name, email, password, zone }) });
@@ -122,8 +140,26 @@ export function AuthView({ zones, onLogin, message }: { zones: Zone[]; onLogin: 
             {mode !== "forgot" && (
               <div className="form-group">
                 <label htmlFor="password">Contraseña</label>
-                <input id="password" name="password" type="password" required minLength={8} placeholder="Mínimo 8 caracteres" {...errorProps("password", errors)} />
+                <div className="input-with-action">
+                  <input id="password" name="password" type={showPassword ? "text" : "password"} required minLength={8} placeholder="Mínimo 8 caracteres" {...errorProps("password", errors)} />
+                  <button
+                    type="button"
+                    className="input-action"
+                    onClick={() => setShowPassword(value => !value)}
+                    aria-pressed={showPassword}
+                    aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+                  >
+                    <Icon name={showPassword ? "eyeOff" : "eye"} size={18} />
+                  </button>
+                </div>
                 {errors.password && <span className="field-error" id="password-error">{errors.password}</span>}
+              </div>
+            )}
+            {mode === "register" && (
+              <div className="form-group">
+                <label htmlFor="password-confirm">Confirmar contraseña</label>
+                <input id="password-confirm" name="password-confirm" type={showPassword ? "text" : "password"} required minLength={8} placeholder="Repite la contraseña" {...errorProps("password-confirm", errors)} />
+                {errors["password-confirm"] && <span className="field-error" id="password-confirm-error">{errors["password-confirm"]}</span>}
               </div>
             )}
             {mode === "forgot" && (
@@ -147,7 +183,10 @@ export function AuthView({ zones, onLogin, message }: { zones: Zone[]; onLogin: 
             {mode === "register" && (
               <div className="form-group">
                 <label htmlFor="zone">Zona</label>
-                <Select id="zone" value={zone} onChange={setZone} options={fallbackZones.map(item => ({ value: item, label: item }))} />
+                <Select id="zone" value={zone} onChange={setZone} options={zoneOptions} placeholder="Selecciona tu zona" />
+                {zoneOptions.length === 0 && (
+                  <span className="field-error">No se pudo cargar el catálogo de zonas. Inténtalo de nuevo en unos segundos.</span>
+                )}
               </div>
             )}
             <button type="submit" className="btn-primary" disabled={isSubmitting} style={{marginTop:8}}>

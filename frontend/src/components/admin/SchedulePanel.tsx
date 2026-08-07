@@ -10,6 +10,8 @@ import { Toolbar, FilterSelect } from "../Toolbar";
 import { Pagination, paginate } from "../Pagination";
 import { Select } from "../Select";
 import { TimePicker, formatTimeLabel } from "../TimePicker";
+import { BulkActionBar } from "../BulkActionBar";
+import { useBulkActions } from "../../hooks/useBulkActions";
 import { WASTE_TYPES, WEEK_DAYS, toOptions } from "../../constants";
 
 const PAGE_SIZE = 8;
@@ -63,9 +65,23 @@ export function SchedulePanel({ zones, schedules: initialSchedules }: { zones: Z
   const currentPage = Math.min(page, pageCount);
   const visible = paginate(filtered, currentPage, PAGE_SIZE);
 
+  const bulk = useBulkActions({ resource: "schedules", availableIds: visible.map(item => item.id) });
+
   function report(message: string, error = false) {
     setFeedback(message);
     setIsError(error);
+  }
+
+  async function deleteSelected() {
+    try {
+      const result = await bulk.deleteSelected();
+      setSchedules(prev => prev.filter(item => !result.deleted.includes(item.id)));
+      report(result.failed.length
+        ? `${result.count} horario(s) eliminado(s); ${result.failed.length} no se pudo(ieron) eliminar`
+        : `${result.count} horario(s) eliminado(s)`, result.failed.length > 0);
+    } catch (error) {
+      report(error instanceof Error ? error.message : 'No se pudieron eliminar los horarios', true);
+    }
   }
 
   function openCreate() {
@@ -153,12 +169,21 @@ export function SchedulePanel({ zones, schedules: initialSchedules }: { zones: Z
 
       {feedback && <p className={`hint ${isError ? "error" : "success"}`} aria-live="polite">{feedback}</p>}
 
+      <BulkActionBar count={bulk.count} noun={{ singular: "horario", plural: "horarios" }} busy={bulk.busy} onClear={bulk.clear} onDelete={deleteSelected} />
+
       <DataTable
         columns={columns}
         rows={visible}
         rowKey={(item, index) => `schedule-${item.id}-${index}`}
         caption="Lista de horarios"
         emptyMessage="No hay horarios registrados para este filtro"
+        selection={{
+          isSelected: item => bulk.isSelected(item.id),
+          onToggle: item => bulk.toggle(item.id),
+          allSelected: bulk.allSelected,
+          onToggleAll: bulk.toggleAll,
+          labelOf: item => `Seleccionar horario de ${item.zone} el ${item.day}`,
+        }}
       />
       <Pagination page={currentPage} pageCount={pageCount} total={filtered.length} onChange={setPage} />
 

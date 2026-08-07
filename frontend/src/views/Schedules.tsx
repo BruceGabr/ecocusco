@@ -7,10 +7,11 @@ import { Pagination, paginate } from "../components/Pagination";
 import { formatTimeLabel } from "../components/TimePicker";
 import { toOptions } from "../constants";
 import { exportToCSV } from "../utils/export";
+import { NextCollectionBanner } from "../components/NextCollectionBanner";
 
 const PAGE_SIZE = 10;
 
-export function Schedules({ schedules }: { schedules: Schedule[] }) {
+export function Schedules({ schedules, zone }: { schedules: Schedule[]; zone?: string }) {
   const [zoneFilter, setZoneFilter] = useState("");
   const [dayFilter, setDayFilter] = useState("");
   const [timeFilter, setTimeFilter] = useState("");
@@ -47,6 +48,8 @@ export function Schedules({ schedules }: { schedules: Schedule[] }) {
 
   return (
     <div className="listing">
+      <NextCollectionBanner schedules={schedules} zone={zone} />
+
       <Toolbar
         filters={
           <>

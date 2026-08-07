@@ -52,6 +52,22 @@ def require_current_user(
     return user
 
 
+def optional_current_user(authorization: str | None = Header(default=None)) -> dict[str, Any] | None:
+    """Usuario autenticado si la petición trae un token válido; si no, `None`.
+
+    Para los endpoints que siguen siendo públicos pero personalizan la respuesta
+    cuando sí hay sesión. Un token inválido no da error: se trata como anónimo,
+    porque el endpoint no exige identificarse.
+    """
+    if not authorization:
+        return None
+    try:
+        payload = require_token_payload(authorization)
+        return require_current_user(payload)
+    except HTTPException:
+        return None
+
+
 def require_role(allowed_roles: set[str]):
     def dependency(current_user: dict[str, Any] = Depends(require_current_user)) -> dict[str, Any]:
         if normalize_role(str(current_user.get("role", PUBLIC_REGISTRATION_ROLE))) not in allowed_roles:

@@ -15,6 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import APP_TITLE, APP_VERSION, cors_origin_regex, cors_origins
 from app.routers import (
+    admin,
     analytics,
     auth,
     collections,
@@ -49,5 +50,6 @@ for router in (
     collections.router,
     analytics.router,
     operations.router,
+    admin.router,
 ):
     app.include_router(router)
