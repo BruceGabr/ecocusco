@@ -77,6 +77,17 @@ class MemoryStore:
         ]
         self.password_resets: dict[str, dict[str, Any]] = {}
 
+        # --- Seguimiento en vivo de la app móvil -------------------------
+        # Espejo en memoria de las tablas route_sessions, truck_positions,
+        # push_tokens, user_locations y proximity_notices, para que el modo
+        # demostración soporte los mismos flujos sin PostgreSQL.
+        self.route_sessions: list[dict[str, Any]] = []
+        self.truck_positions: list[dict[str, Any]] = []
+        self.push_tokens: list[dict[str, Any]] = []
+        self.user_locations: dict[int, dict[str, Any]] = {}
+        #: Pares (session_id, user_id) que ya recibieron aviso de proximidad.
+        self.proximity_notices: set[tuple[int, int]] = set()
+
     def analytics(self) -> dict[str, Any]:
         # Delega en la misma función que usa el modo PostgreSQL: antes había dos
         # copias del cálculo que podían divergir (y ambas devolvían el 87 fijo).

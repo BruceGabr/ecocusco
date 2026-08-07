@@ -14,10 +14,9 @@ import { useBulkActions } from "../../hooks/useBulkActions";
 import { collectErrors, errorProps, FieldErrors } from "../../utils/validation";
 
 const PAGE_SIZE = 8;
-const ROLES: Role[] = ["ciudadano", "operador", "admin", "conductor"];
+const ROLES: Role[] = ["ciudadano", "admin", "conductor"];
 const ROLE_LABELS: Record<Role, string> = {
   ciudadano: "Ciudadano",
-  operador: "Operador",
   admin: "Administrador",
   conductor: "Conductor",
 };

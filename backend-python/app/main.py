@@ -23,6 +23,7 @@ from app.routers import (
     operations,
     reports,
     schedules,
+    tracking,
     trucks,
     users,
     zones,
@@ -51,5 +52,6 @@ for router in (
     analytics.router,
     operations.router,
     admin.router,
+    tracking.router,
 ):
     app.include_router(router)

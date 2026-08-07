@@ -2,6 +2,16 @@ import { Bootstrap, Role, View } from './types';
 
 export const geoBase = import.meta.env.VITE_GEO_URL ?? '/geo';
 
+/**
+ * Enlace de descarga de la app Android.
+ *
+ * Sale del entorno (`VITE_APK_URL` en Vercel) porque cada compilación de EAS
+ * genera una URL nueva: fijarla en el repositorio obligaría a un commit por
+ * cada versión del APK. Sin valor, el bloque de descarga no se muestra.
+ */
+export const APK_URL = import.meta.env.VITE_APK_URL ?? '';
+export const APK_VERSION = import.meta.env.VITE_APK_VERSION ?? '';
+
 export const viewLabels: Record<View, string> = {
   dashboard: 'Dashboard',
   schedules: 'Horarios',
@@ -25,7 +35,7 @@ export const views = Object.keys(viewLabels) as View[];
  */
 export const viewRoles: Partial<Record<View, readonly Role[]>> = {
   admin: ['admin'],
-  operations: ['operador', 'admin'],
+  operations: ['admin'],
 };
 
 export const viewsFor = (role: Role | undefined): View[] =>

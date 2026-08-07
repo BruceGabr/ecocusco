@@ -176,15 +176,15 @@ def test_admin_can_create_privileged_user():
         "/api/users",
         headers={"Authorization": f"Bearer {token}"},
         json={
-            "name": "Operador Municipal",
-            "email": "operador_municipal@test.pe",
-            "password": "operador123",
-            "role": "operador",
+            "name": "Conductor Municipal",
+            "email": "conductor_municipal@test.pe",
+            "password": "conductor123",
+            "role": "conductor",
             "zone": "Wanchaq",
         },
     )
     assert response.status_code == 200
-    assert response.json()["role"] == "operador"
+    assert response.json()["role"] == "conductor"
 
 
 # --- ROLES: sin autenticación no se pueden crear usuarios privilegiados ---

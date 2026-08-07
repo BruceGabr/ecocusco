@@ -10,10 +10,15 @@ from enum import Enum
 
 
 class Role(str, Enum):
-    """Roles del sistema."""
+    """Roles del sistema.
+
+    Hubo un cuarto rol, `operador`, pensado para el personal del municipio.
+    Se retiró porque en la práctica hacía exactamente lo mismo que `admin`:
+    dos nombres para el mismo conjunto de permisos solo generaban dudas sobre
+    a quién dar de alta como qué.
+    """
 
     CIUDADANO = "ciudadano"
-    OPERADOR = "operador"
     ADMIN = "admin"
     CONDUCTOR = "conductor"
 
@@ -22,7 +27,7 @@ class Role(str, Enum):
 PUBLIC_REGISTRATION_ROLE = Role.CIUDADANO.value
 
 #: Quiénes pueden gestionar la operación (resolver reportes, registrar eventos).
-OPERATIONAL_ROLES = {Role.OPERADOR.value, Role.ADMIN.value}
+OPERATIONAL_ROLES = {Role.ADMIN.value}
 
 #: Quiénes administran catálogos y usuarios.
 ADMIN_ROLES = {Role.ADMIN.value}
@@ -49,6 +54,24 @@ PROXIMITY_VERY_NEAR_M = 200
 #: Límites admitidos para el radio que puede pedir el cliente.
 PROXIMITY_RADIUS_MIN_M = 10
 PROXIMITY_RADIUS_MAX_M = 5000
+
+# --- Aviso al móvil del ciudadano ------------------------------------------
+#
+# El requisito es avisar "dos cuadras antes". En el damero del Cusco una cuadra
+# ronda los 80 m, así que dos son unos 160. Se mide contra la última posición
+# conocida del ciudadano, no contra el centro de su zona: "dos cuadras" solo
+# significa algo respecto de dónde está la persona.
+PUSH_ALERT_RADIUS_M = 160
+
+#: Distancia a partir de la cual se considera que el camión ya se alejó y el
+#: aviso puede volver a emitirse. Con histéresis: si el umbral de salida fuera
+#: el mismo que el de entrada, una lectura oscilando alrededor de 160 m
+#: dispararía una notificación tras otra.
+PUSH_ALERT_RESET_M = 400
+
+#: Antigüedad máxima de la ubicación de un ciudadano para tenerla en cuenta.
+#: Una posición de hace horas ya no dice dónde está.
+USER_LOCATION_MAX_AGE_MINUTES = 120
 
 
 def normalize_role(role: str) -> str:

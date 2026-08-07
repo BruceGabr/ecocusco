@@ -9,7 +9,7 @@ Qué ve cada rol:
 
 - ciudadano: camiones `En ruta` a menos del radio de su zona asignada.
 - conductor: zonas a menos del radio de su propio camión.
-- operador y admin: todas las parejas camión-zona dentro del radio.
+- admin: todas las parejas camión-zona dentro del radio.
 
 Las alertas se emiten con el mismo formato que las notificaciones persistidas
 (`type = "proximity"`) para que el frontend las pinte con el módulo de avisos
@@ -204,7 +204,7 @@ def build_proximity_alerts(
             ))
         return alerts
 
-    if role in OPERATIONAL_ROLES or role in ADMIN_ROLES:
+    if role in ADMIN_ROLES:
         for truck in on_route:
             truck_lat, truck_lon = _coordinates(truck)
             for zone in zones:

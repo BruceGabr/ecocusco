@@ -48,7 +48,7 @@ export function Reports({ data, session, onCreateReport, onResolveReport }: { da
     }
   }
   const isCitizen = session.role === "ciudadano";
-  const canResolve = session.role === "operador" || session.role === "admin";
+  const canResolve = session.role === "admin";
 
   return (
     <div className="two-col reports-layout">

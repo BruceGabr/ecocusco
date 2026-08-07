@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-08-07 (tarde)
+
+### Aplicación móvil y seguimiento en vivo
+
+- **App Android (`ecocusco-app`, Expo SDK 56).** Para vecinos y conductores, con el mismo backend y el mismo login que la web: el rol que devuelve el servidor decide qué pantallas se montan. El registro público sigue creando solo ciudadanos.
+- **Aviso a dos cuadras.** El conductor pulsa "Iniciar ruta" y su móvil emite la posición del camión cada 10 s como servicio en primer plano (sigue con la pantalla bloqueada). Con cada punto, el backend mira qué ciudadanos quedaron a 160 m y les envía una notificación push, que llega **aunque la app esté cerrada**. Histéresis a 400 m para que el aviso no se repita en ráfaga.
+- **Backend — seguimiento.** Nuevas tablas `route_sessions`, `truck_positions`, `push_tokens`, `user_locations` y `proximity_notices`, con `repositories/tracking.py`, `services/tracking.py`, `services/push.py` y el router `/api/tracking/*`. Índice único que impide dos sesiones activas para el mismo camión. La posición emitida se sincroniza con la ficha del camión, así que el mapa de la web y las alertas existentes ven al camión donde está de verdad.
+- **Web — monitoreo del conductor.** Pestaña "Seguimiento" en Administración: cada salida real con conductor, camión, duración, distancia recorrida y el trayecto dibujado en el mapa. Exportable a CSV.
+- **Web — descarga del APK** en la pantalla de acceso, tras `VITE_APK_URL`.
+- **Rol `operador` retirado.** Tenía exactamente los mismos permisos que `admin`. Migración `002` incluida: sin ella, `normalize_role()` degradaría las cuentas existentes a `ciudadano` en silencio.
+
+### Migraciones a aplicar en Render
+```
+psql "$DATABASE_URL" -f database/migrations/001_tracking_movil.sql
+psql "$DATABASE_URL" -f database/migrations/002_eliminar_rol_operador.sql
+```
+
+### Verificación
+`pytest` 120 pasados · `vitest` 43 pasados · `tsc --noEmit` sin errores en web y móvil · `vite build` correcto · bundle Android compilado (1084 módulos).
+
 ## 2026-08-07
 
 ### Integración de funcionalidades pendientes

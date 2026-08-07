@@ -75,6 +75,7 @@ export function MapView({
   prioritizedZones,
   focusZone,
   nearbyTruckCodes = [],
+  track,
 }: {
   zones: Zone[];
   trucks: Truck[];
@@ -84,6 +85,8 @@ export function MapView({
   focusZone?: Zone;
   /** Códigos de camión con aviso de proximidad activo: se pintan en rojo. */
   nearbyTruckCodes?: string[];
+  /** Recorrido real de una ruta, para el monitoreo del conductor. */
+  track?: Array<{ latitude: number; longitude: number }>;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -100,8 +103,9 @@ export function MapView({
         prioritizedZones,
         focusZone,
         nearbyTruckCodes,
+        track,
       }),
-    [zones, trucks, routes, prioritizedZones, focusZone, nearbyTruckCodes],
+    [zones, trucks, routes, prioritizedZones, focusZone, nearbyTruckCodes, track],
   );
 
   useEffect(() => {
@@ -178,6 +182,16 @@ export function MapView({
         )
         .addTo(layer);
     });
+
+    // Recorrido real: se dibuja como línea y se encuadra, porque es el motivo
+    // por el que se abrió el mapa.
+    if (track && track.length > 1) {
+      const line = L.polyline(
+        track.map((point) => [point.latitude, point.longitude] as [number, number]),
+        { color: MAP_COLORS.normal, weight: 4, opacity: 0.8 },
+      ).addTo(layer);
+      mapRef.current.fitBounds(line.getBounds(), { padding: [24, 24] });
+    }
 
     routes.forEach((route) =>
       L.circle([route.latitude, route.longitude], {

@@ -1399,6 +1399,58 @@ html[data-theme='dark'] tbody tr:hover td {
   gap: 4px;
 }
 
+/* ========== DESCARGA DE LA APP MÓVIL ========== */
+.apk-download {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 20px;
+  padding: 16px;
+  border-radius: var(--radius);
+  background: var(--panel-alt);
+  flex-wrap: wrap;
+}
+.apk-download .apk-icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius);
+  background: var(--green-400);
+  color: #fff;
+  flex-shrink: 0;
+}
+.apk-download .apk-icon svg {
+  width: 20px;
+  height: 20px;
+}
+.apk-download .apk-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 180px;
+}
+.apk-download .apk-copy strong {
+  font-size: 14px;
+}
+.apk-download .apk-copy span {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+.apk-download .apk-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.apk-download .apk-version {
+  font-size: 11px;
+  opacity: 0.8;
+}
+
 /* ========== SELECCIÓN MÚLTIPLE ========== */
 .bulk-bar {
   display: flex;

@@ -99,3 +99,82 @@ create table if not exists notifications (
   is_read boolean not null default false,
   created_at timestamp not null default now()
 );
+
+-- ===========================================================================
+-- Seguimiento en vivo del conductor (app móvil)
+-- ===========================================================================
+--
+-- El conductor abre una sesión de ruta al pulsar "Iniciar ruta" y su móvil
+-- emite la posición mientras dura. Se guardan las dos cosas: la sesión (para
+-- saber quién salió, cuándo y por cuánto tiempo) y cada punto del recorrido
+-- (para reconstruir el trayecto y auditarlo después).
+
+create table if not exists route_sessions (
+  id bigserial primary key,
+  truck_id bigint not null references trucks(id),
+  driver_id bigint not null references users(id),
+  zone_id bigint references zones(id),
+  status varchar(20) not null default 'activa',
+  started_at timestamp not null default now(),
+  finished_at timestamp,
+  -- Métricas del recorrido, actualizadas al registrar cada posición.
+  distance_m numeric(12, 2) not null default 0,
+  positions_count integer not null default 0
+);
+
+-- Solo puede haber una sesión activa por camión: si no, dos móviles emitirían
+-- posiciones contradictorias para el mismo vehículo.
+create unique index if not exists route_sessions_one_active_per_truck
+  on route_sessions (truck_id) where status = 'activa';
+
+create index if not exists route_sessions_driver_idx on route_sessions (driver_id, started_at desc);
+
+create table if not exists truck_positions (
+  id bigserial primary key,
+  session_id bigint not null references route_sessions(id) on delete cascade,
+  latitude numeric(10, 7) not null,
+  longitude numeric(10, 7) not null,
+  -- Precisión y velocidad tal como las informa el GPS del móvil; sirven para
+  -- descartar lecturas malas al reconstruir el trayecto.
+  accuracy_m numeric(8, 2),
+  speed_mps numeric(8, 2),
+  recorded_at timestamp not null default now()
+);
+
+create index if not exists truck_positions_session_idx on truck_positions (session_id, recorded_at desc);
+
+-- Token de notificaciones push por dispositivo. Un usuario puede tener varios
+-- (móvil y tablet), y el mismo dispositivo puede cambiar de dueño, así que la
+-- clave única es el token y el propietario se sobrescribe.
+create table if not exists push_tokens (
+  id bigserial primary key,
+  user_id bigint not null references users(id) on delete cascade,
+  token varchar(200) not null unique,
+  platform varchar(20),
+  created_at timestamp not null default now(),
+  updated_at timestamp not null default now()
+);
+
+create index if not exists push_tokens_user_idx on push_tokens (user_id);
+
+-- Última posición conocida del ciudadano. El aviso de proximidad se mide
+-- contra ella, no contra el centro de su zona: "dos cuadras" solo significa
+-- algo respecto de dónde está la persona.
+create table if not exists user_locations (
+  user_id bigint primary key references users(id) on delete cascade,
+  latitude numeric(10, 7) not null,
+  longitude numeric(10, 7) not null,
+  accuracy_m numeric(8, 2),
+  updated_at timestamp not null default now()
+);
+
+-- Aviso ya enviado, para no repetirlo en cada emisión de posición. Se limpia
+-- cuando el camión se aleja o termina la sesión.
+create table if not exists proximity_notices (
+  id bigserial primary key,
+  session_id bigint not null references route_sessions(id) on delete cascade,
+  user_id bigint not null references users(id) on delete cascade,
+  distance_m numeric(10, 2) not null,
+  sent_at timestamp not null default now(),
+  unique (session_id, user_id)
+);

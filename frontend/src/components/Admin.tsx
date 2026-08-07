@@ -6,8 +6,9 @@ import { SchedulePanel } from "./admin/SchedulePanel";
 import { TruckPanel } from "./admin/TruckPanel";
 import { MaintenancePanel } from "./admin/MaintenancePanel";
 import { EventsPanel } from "./admin/EventsPanel";
+import { TrackingPanel } from "./admin/TrackingPanel";
 
-const TABS = ["Usuarios", "Zonas", "Horarios", "Camiones", "Mantenimiento", "Eventos"] as const;
+const TABS = ["Usuarios", "Zonas", "Horarios", "Camiones", "Mantenimiento", "Seguimiento", "Eventos"] as const;
 type AdminTab = typeof TABS[number];
 
 /**
@@ -48,6 +49,7 @@ export default function Admin({ data, onOperationUpdate }: { data: Bootstrap; on
         {tab === "Horarios" && <SchedulePanel zones={data.zones ?? []} schedules={data.schedules ?? []} />}
         {tab === "Camiones" && <TruckPanel zones={data.zones ?? []} trucks={data.trucks ?? []} />}
         {tab === "Mantenimiento" && <MaintenancePanel trucks={data.trucks ?? []} maintenance={data.maintenance ?? []} />}
+        {tab === "Seguimiento" && <TrackingPanel zones={data.zones ?? []} />}
         {tab === "Eventos" && <EventsPanel routes={data.routes ?? []} containers={data.containers ?? []} onOperationUpdate={onOperationUpdate} />}
       </div>
     </div>

@@ -3,6 +3,7 @@ import { Credentials, Role, Session, Zone } from "../types";
 import { request } from "../api";
 import { Icon } from "../components/Icon";
 import { Select } from "../components/Select";
+import { ApkDownload } from "../components/ApkDownload";
 import { collectErrors, errorProps, FieldErrors } from "../utils/validation";
 
 export function AuthView({ zones, onLogin, message }: { zones: Zone[]; onLogin: (credentials: Credentials) => Promise<void>; message: string }) {
@@ -178,7 +179,7 @@ export function AuthView({ zones, onLogin, message }: { zones: Zone[]; onLogin: 
             {/* Solo en registro. El selector de Rol se retiró: el alta pública
                 siempre crea un ciudadano, así que ofrecer "Administrador" era
                 a la vez engañoso y una escalada de privilegios. Las cuentas de
-                operador, conductor y administrador las crea un administrador
+                conductor y administrador las crea un administrador
                 desde el panel. */}
             {mode === "register" && (
               <div className="form-group">
@@ -196,6 +197,11 @@ export function AuthView({ zones, onLogin, message }: { zones: Zone[]; onLogin: 
 
           {feedback && <p className="hint success">{feedback}</p>}
           {(message || localError) && <p className="hint error" role="alert">{message || localError}</p>}
+
+          {/* La app móvil se ofrece aquí, antes de entrar: quien llega a la web
+              buscando cuándo pasa el camión está mejor servido con el aviso en
+              el celular que con el panel. */}
+          <ApkDownload />
         </div>
       </section>
     </main>

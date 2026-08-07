@@ -1,4 +1,4 @@
-export type Role = 'ciudadano' | 'operador' | 'admin' | 'conductor';
+export type Role = 'ciudadano' | 'admin' | 'conductor';
 export type View =
   | 'dashboard'
   | 'schedules'
@@ -189,6 +189,34 @@ export type Monitor = Partial<Bootstrap> & {
     average_container_fill: number;
     compliance_estimate: number;
   };
+};
+
+/** Un punto del recorrido emitido por el móvil del conductor. */
+export type TrackPoint = {
+  latitude: number;
+  longitude: number;
+  recorded_at?: string;
+  speed_mps?: number | null;
+};
+
+/**
+ * Sesión de ruta: una salida del camión, desde que el conductor pulsó
+ * "Iniciar ruta" en la app hasta que la finalizó.
+ */
+export type RouteSession = {
+  id: number;
+  truck_id: number;
+  truck: string | null;
+  driver_id: number;
+  driver: string | null;
+  zone_id: number | null;
+  zone: string | null;
+  status: 'activa' | 'finalizada';
+  started_at: string;
+  finished_at: string | null;
+  distance_m: number;
+  positions_count: number;
+  last_position: TrackPoint | null;
 };
 
 export type ReportStatus = 'Pendiente' | 'En revision' | 'Resuelto';

@@ -155,6 +155,42 @@ class ProximityCheckRequest(BaseModel):
     )
 
 
+class RouteSessionStart(BaseModel):
+    """Apertura de una sesión de ruta desde la app del conductor.
+
+    `truck_id` es opcional: si no llega, se resuelve el camión asignado al
+    conductor por su nombre, que es como los relaciona la ficha del vehículo.
+    """
+
+    truck_id: int | None = None
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
+
+
+class PositionReport(BaseModel):
+    """Un punto del recorrido tal como lo informa el GPS del móvil."""
+
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
+    accuracy_m: float | None = Field(default=None, ge=0)
+    speed_mps: float | None = Field(default=None, ge=0)
+
+
+class UserLocationReport(BaseModel):
+    """Última posición conocida del ciudadano, para medir la proximidad."""
+
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
+    accuracy_m: float | None = Field(default=None, ge=0)
+
+
+class PushTokenRegister(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    token: str = Field(min_length=10, max_length=200)
+    platform: str | None = Field(default=None, max_length=20)
+
+
 class BulkActionRequest(BaseModel):
     """Acción masiva sobre un catálogo del panel de administración."""
 

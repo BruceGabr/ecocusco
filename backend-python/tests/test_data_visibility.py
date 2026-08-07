@@ -76,9 +76,9 @@ def test_citizen_only_sees_own_reports():
     assert [item["id"] for item in visible] == [1]
 
 
-def test_operator_sees_all_reports():
+def test_admin_sees_all_reports():
     reports = [{"id": 1, "citizen": "Ana"}, {"id": 2, "citizen": "Jose"}]
-    assert len(visible_reports_for({"role": "operador", "name": "Op"}, reports)) == 2
+    assert len(visible_reports_for({"role": "admin", "name": "Admin"}, reports)) == 2
 
 
 # --- Las notificaciones ajenas no se filtran; las de difusión sí llegan ---

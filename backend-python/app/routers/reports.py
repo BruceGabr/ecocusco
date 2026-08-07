@@ -40,6 +40,6 @@ def resolve_report(
     if normalize_role(str(current_user.get("role", PUBLIC_REGISTRATION_ROLE))) not in OPERATIONAL_ROLES:
         raise HTTPException(
             status_code=403,
-            detail="Solo operadores o administradores pueden resolver reportes",
+            detail="Solo un administrador puede resolver reportes",
         )
     return resolve_report_record(report_id)
